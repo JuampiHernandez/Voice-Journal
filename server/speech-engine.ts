@@ -1,0 +1,257 @@
+import { createServer } from "node:http";
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+import type { SpeechEngineSession } from "@elevenlabs/elevenlabs-js/wrapper/speech-engine/SpeechEngineSession";
+import OpenAI from "openai";
+import "dotenv/config";
+import { ensureUser, getEntryById, saveJournalEntry } from "../src/lib/memory";
+import { buildAgentInstructions } from "../src/lib/agent-instructions";
+import { syncSpeechEngineConversationConfig } from "../src/lib/speech-engine-config";
+import { consumePendingSessionUser } from "../src/lib/session-user";
+import { analyzeTranscript } from "../src/lib/analysis";
+import { fetchConversationUserTranscript } from "../src/lib/elevenlabs-conversation";
+import { syncSpeechEngineWsUrl } from "../src/lib/speech-engine-sync";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const SPEECH_ENGINE_ID = process.env.SPEECH_ENGINE_ID;
+const PORT = Number(process.env.SPEECH_ENGINE_PORT ?? 3002);
+
+if (!process.env.ELEVENLABS_API_KEY) {
+  console.error("Missing ELEVENLABS_API_KEY");
+  process.exit(1);
+}
+if (!process.env.OPENAI_API_KEY) {
+  console.error("Missing OPENAI_API_KEY");
+  process.exit(1);
+}
+if (!SPEECH_ENGINE_ID) {
+  console.error("Missing SPEECH_ENGINE_ID — run: npm run setup:speech-engine");
+  process.exit(1);
+}
+
+const elevenlabs = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+type TranscriptMessage = { role: string; content: string };
+
+type SessionMeta = {
+  userId: string;
+  startedAt: number;
+  transcript: TranscriptMessage[];
+  saved: boolean;
+  entryId?: string;
+};
+
+// conversationId is stable; WeakMap session keys were missing transcripts on some disconnects
+const sessionMetaByConversation = new Map<string, SessionMeta>();
+
+function getSessionMeta(session: SpeechEngineSession): SessionMeta | undefined {
+  const id = session.conversationId;
+  if (!id) return undefined;
+  return sessionMetaByConversation.get(id);
+}
+
+async function resolveUserTranscript(
+  session: SpeechEngineSession,
+  meta: SessionMeta | undefined
+): Promise<string> {
+  const fromMeta = (meta?.transcript ?? [])
+    .filter((m) => m.role === "user")
+    .map((m) => m.content)
+    .join("\n")
+    .trim();
+
+  if (fromMeta) return fromMeta;
+
+  const conversationId = session.conversationId;
+  if (!conversationId) return "";
+
+  console.log(
+    `[SpeechEngine] no WS transcript for ${conversationId} — fetching from ElevenLabs API`
+  );
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    if (attempt > 0) await sleep(1500);
+    const fetched = await fetchConversationUserTranscript(conversationId);
+    if (fetched?.transcript) {
+      console.log(`[SpeechEngine] ElevenLabs transcript ready (attempt ${attempt + 1})`);
+      if (meta) {
+        meta.transcript = fetched.transcript.split("\n").map((content) => ({
+          role: "user",
+          content,
+        }));
+      }
+      return fetched.transcript;
+    }
+    console.log(
+      `[SpeechEngine] transcript poll ${attempt + 1}/8:`,
+      fetched?.error ?? "not ready"
+    );
+  }
+
+  return "";
+}
+
+async function persistSession(session: SpeechEngineSession, reason: string) {
+  const meta = getSessionMeta(session);
+  if (!meta || meta.saved) return;
+
+  const userLines = await resolveUserTranscript(session, meta);
+
+  if (!userLines) {
+    console.log(`Session ended (${reason}, no user speech):`, session.conversationId);
+    sessionMetaByConversation.delete(session.conversationId ?? "");
+    return;
+  }
+
+  meta.saved = true;
+
+  try {
+    const durationSeconds = Math.round((Date.now() - meta.startedAt) / 1000);
+
+    // Save transcript immediately so the UI can confirm while analysis runs
+    meta.entryId = saveJournalEntry({
+      userId: meta.userId,
+      transcript: userLines,
+      summary: "Processing your check-in…",
+      mood: 5,
+      themes: [],
+      durationSeconds,
+      conversationId: session.conversationId,
+    });
+
+    const analysis = await analyzeTranscript(userLines);
+
+    saveJournalEntry({
+      userId: meta.userId,
+      entryId: meta.entryId,
+      transcript: userLines,
+      summary: analysis.summary,
+      mood: analysis.mood,
+      themes: analysis.themes,
+      durationSeconds,
+      conversationId: session.conversationId,
+      emotionalMoments: analysis.emotionalMoments,
+      openThread: analysis.openThread,
+    });
+
+    const saved = getEntryById(meta.userId, meta.entryId);
+    console.log(`Saved journal entry (${reason}) for`, meta.userId, saved?.entry_date);
+  } catch (err) {
+    meta.saved = false;
+    console.error("Failed to save journal entry:", err);
+  } finally {
+    sessionMetaByConversation.delete(session.conversationId ?? "");
+  }
+}
+
+const httpServer = createServer((req, res) => {
+  if (req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+});
+
+async function main() {
+  const sync = await syncSpeechEngineWsUrl();
+  const convConfig = await syncSpeechEngineConversationConfig();
+  if (convConfig.updated) {
+    console.log("Speech Engine conversation config updated (eager turns + interruptions)");
+  } else if (!convConfig.ok) {
+    console.warn("Speech Engine conversation config:", convConfig.error);
+  }
+
+  if (!sync.ok) {
+    console.error("Speech Engine URL sync failed:", sync.error);
+    process.exit(1);
+  }
+  if (sync.updated) {
+    console.log(`Updated ElevenLabs wsUrl: ${sync.registered} → ${sync.expected}`);
+  } else {
+    console.log(`ElevenLabs wsUrl OK: ${sync.expected}`);
+  }
+
+  await elevenlabs.speechEngine.attach(SPEECH_ENGINE_ID!, httpServer, "/ws", {
+    debug: true,
+
+    onInit(conversationId, session) {
+      const userId = consumePendingSessionUser();
+      ensureUser(userId);
+      sessionMetaByConversation.set(conversationId, {
+        userId,
+        startedAt: Date.now(),
+        transcript: [],
+        saved: false,
+      });
+      console.log("Session started:", conversationId, "user:", userId);
+    },
+
+    async onTranscript(transcript, signal, session) {
+      const meta = getSessionMeta(session);
+      const userId = meta?.userId ?? "demo-user";
+      ensureUser(userId);
+
+      const userLines = transcript.filter((m) => m.role === "user");
+      console.log(
+        `[SpeechEngine] transcript event_id=${session.conversationId} total=${transcript.length} user=${userLines.length}`,
+        userLines.map((m) => m.content.slice(0, 60)).join(" | ") || "(no user speech yet)"
+      );
+
+      const instructions = buildAgentInstructions(userId);
+
+      if (meta) {
+        meta.transcript = transcript.map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+        console.log(
+          `[SpeechEngine] transcript update (${transcript.length} messages):`,
+          transcript.map((m) => `${m.role}: ${m.content.slice(0, 60)}`).join(" | ")
+        );
+      }
+
+      const response = await openai.responses.create(
+        {
+          model: "gpt-4o-mini",
+          instructions,
+          input: transcript.map((m) => ({
+            role: m.role === "agent" ? "assistant" : m.role,
+            content: m.content,
+          })),
+          stream: true,
+        },
+        { signal }
+      );
+
+      session.sendResponse(response);
+    },
+
+    async onClose(session) {
+      await persistSession(session, "close");
+    },
+
+    async onDisconnect(session) {
+      // Browser "End early" / tab close triggers disconnect, not close
+      await persistSession(session, "disconnect");
+    },
+
+    onError(err) {
+      console.error("Speech Engine error:", err);
+    },
+  });
+
+  httpServer.listen(PORT, () => {
+    console.log(`Voice Journal Speech Engine listening on http://localhost:${PORT}`);
+    console.log(`WebSocket: ws://localhost:${PORT}/ws`);
+    console.log(`Speech Engine ID: ${SPEECH_ENGINE_ID}`);
+    console.log(`Journal DB: ${process.cwd()}/data/voice-journal.db`);
+  });
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
