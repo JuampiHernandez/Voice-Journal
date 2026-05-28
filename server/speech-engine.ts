@@ -196,10 +196,6 @@ async function main() {
     const publicWs = resolveSpeechEngineWsUrl();
     if (publicWs) {
       console.log(`Public WebSocket: ${publicWs}`);
-    } else if (process.env.RAILWAY_ENVIRONMENT) {
-      console.warn(
-        "Railway: generate a public domain in Settings → Networking, then restart (or set SPEECH_ENGINE_WS_URL)"
-      );
     }
     console.log(`Journal DB: Supabase (${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "not configured"})`);
   });
@@ -212,7 +208,7 @@ async function main() {
 
   if (missing.length > 0) {
     console.warn(
-      `Speech Engine not attached yet. Missing: ${missing.join(", ")}. /health will still pass for Railway setup.`
+      `Speech Engine not attached yet. Missing: ${missing.join(", ")}. Run npm run setup:speech-engine locally.`
     );
     return;
   }
@@ -242,7 +238,7 @@ async function main() {
   await elevenlabs.speechEngine.attach(SPEECH_ENGINE_ID!, httpServer, "/ws", {
     debug: true,
 
-    async onInit(conversationId, session) {
+    async onInit(conversationId) {
       const userId = await consumePendingSessionUser();
       await ensureUser(userId);
       sessionMetaByConversation.set(conversationId, {

@@ -1,163 +1,116 @@
 # Voice Journal
 
-**Daily 3-min voice check-ins that become your yearly memoir.**
+**Daily 3-minute voice check-ins that become your yearly memoir.**
 
-Built for [#ElevenHacks](https://elevenlabs.io) — showcasing **ElevenLabs Speech Engine** (your LLM + memory) and **Eleven Music API** (year-end score).
+Built for [#ElevenHacks](https://elevenlabs.io) with **ElevenLabs Speech Engine** for local voice check-ins and **Eleven Music API** for the year-end score.
 
-> *"I voice-journaled every day for a month. Here's what the AI noticed."*
+Production is intentionally demo-only for voice. The deployed app shows dashboards, insights, threads, memoir, and local setup instructions. Live voice check-ins run on **localhost + ngrok**.
 
----
+## Quick Start: Local Voice
 
-## Hackathon fit
+Install ngrok and authenticate it once:
 
-| Requirement | How Voice Journal delivers |
-|-------------|---------------------------|
-| **Speech Engine** | Custom server WebSocket + your OpenAI logic; ElevenLabs handles STT/TTS/turn-taking |
-| **Creative voice agent** | Memory-aware daily companion that references yesterday, last week, emotional moments |
-| **Viral hook** | Weekly "what the AI noticed" insights + TikTok-ready emotional timeline |
-| **Eleven Music** | Year-end narrated memoir with generated ambient score |
-| **Privacy story** | All journal data in **your SQLite DB** — not ElevenAgents cloud memory |
+```bash
+ngrok config add-authtoken YOUR_NGROK_TOKEN
+```
 
-### Why Speech Engine over ElevenAgents?
+Clone and install:
 
-**ElevenAgents** excels at managed, low-latency voice agents with dashboard tools and telephony — but **long-running personalized memory** (365 days of transcripts, mood analysis, emotional timelines) belongs on **your infrastructure**.
+```bash
+git clone https://github.com/JuampiHernandez/Voice-Journal.git
+cd Voice-Journal
+npm install
+cp .env.example .env
+```
 
-**Speech Engine** is the ideal split:
-- ElevenLabs → voice layer (STT, TTS, interruptions, WebRTC)
-- Your server → LLM prompts, memory retrieval, analysis, memoir generation
+Fill `.env`:
 
----
+```bash
+ELEVENLABS_API_KEY=your_elevenlabs_key
+OPENAI_API_KEY=your_openai_key
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+ALLOW_GUEST_JOURNAL=true
+```
+
+First time only, create/sync the Speech Engine:
+
+```bash
+ngrok http 3002
+
+# In a second terminal:
+npm run setup:speech-engine
+```
+
+After that, run everything with:
+
+```bash
+npm run dev:full
+```
+
+Open:
+
+```bash
+http://localhost:3001/journal?user=YourName
+```
+
+## Production
+
+Deploy the Next.js app to Vercel for the non-voice demo:
+
+- `/` landing page with copyable local setup
+- `/dashboard` insights and demo seed
+- `/threads` worry/bright thread maps
+- `/memoir` generated memoir
+- `/journal` local setup instructions only
+
+See [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Architecture
 
+```text
+Browser on localhost ── ElevenLabs client ── ElevenLabs STT/TTS
+       │                                      │
+       │                                      ▼
+       ├── Next.js app (:3001)          ngrok public URL
+       │                                      │
+       └── Supabase data ◄── Speech Engine server (:3002)
+                               │
+                               └── OpenAI agent + analysis
 ```
-Browser (Next.js)                    Your server                         ElevenLabs
-─────────────────                    ───────────                         ──────────
-Check-in UI ──WebRTC──► Conversation token API
-                              │
-VoiceJournalSession           ├── Speech Engine WS (/ws) ◄──── STT/TTS pipeline
-                              │        │
-                              │        └── onTranscript → OpenAI + memory context
-                              │
-                              ├── SQLite (entries, moods, moments)
-                              ├── Weekly summary (OpenAI)
-                              └── Memoir (OpenAI script + TTS + Eleven Music)
-```
-
----
-
-## Quick start
-
-### 1. Install
-
-```bash
-npm install
-cp .env.example .env
-# Add ELEVENLABS_API_KEY and OPENAI_API_KEY
-```
-
-### 2. Expose Speech Engine (required for live voice)
-
-Speech Engine needs a **public WebSocket URL**. Use [ngrok](https://ngrok.com):
-
-```bash
-# Terminal 1 — start Speech Engine server
-npm run speech-engine
-
-# Terminal 2 — expose port 3001
-ngrok http 3001
-```
-
-Copy the ngrok `wss://…` URL into `.env`:
-
-```env
-SPEECH_ENGINE_WS_URL=wss://YOUR-ID.ngrok-free.app/ws
-```
-
-### 3. Register Speech Engine (one-time)
-
-```bash
-npm run setup:speech-engine
-# Copy SPEECH_ENGINE_ID into .env
-```
-
-### 4. Run the app
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3001](http://localhost:3001)
-
-### 5. Demo without live voice
-
-For the hackathon video, seed a week of sample entries:
-
-1. Go to **Insights** → **Load demo week**
-2. View weekly AI insights and emotional timeline
-3. Go to **Memoir** → **Generate my memoir** (uses TTS + Eleven Music)
-
-### 6. Deploy for judges (Vercel + Supabase + Railway)
-
-See **[docs/DEPLOY.md](docs/DEPLOY.md)** — Vercel for the app, **Railway for Speech Engine**, Supabase for auth/data, and `?user=JudgeName` guest mode.
-
-```bash
-# After Railway domain is live:
-SPEECH_ENGINE_WS_URL=wss://YOUR-DOMAIN.up.railway.app/ws npm run setup:production
-npm run deploy:railway   # or deploy via Railway dashboard (Dockerfile.speech-engine)
-```
-
----
 
 ## Pages
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Landing + hackathon pitch |
-| `/journal` | 3-minute Speech Engine check-in |
+| `/` | Landing + local setup guide |
+| `/journal` | Local-only 3-minute Speech Engine check-in |
 | `/dashboard` | Streak, weekly insights, emotional timeline |
+| `/threads` | Worry and bright-thread maps |
 | `/memoir` | Year-end narrated memoir + music |
 
----
-
-## Environment variables
+## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ELEVENLABS_API_KEY` | Yes | ElevenLabs API key |
 | `OPENAI_API_KEY` | Yes | LLM for agent, analysis, memoir script |
-| `SPEECH_ENGINE_ID` | For voice | From `npm run setup:speech-engine` |
-| `SPEECH_ENGINE_WS_URL` | For voice | Public `wss://…/ws` URL (ngrok or Railway) |
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side DB (never expose to browser) |
-| `ALLOW_GUEST_JOURNAL` | Demo | `true` lets judges use `?user=Name` without email |
-| `ELEVENLABS_VOICE_ID` | No | Narrator voice (default: George) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side DB key |
+| `SPEECH_ENGINE_ID` | Local voice | Written by `npm run setup:speech-engine` |
+| `SPEECH_ENGINE_WS_URL` | Local voice | Written by `npm run setup:speech-engine` from ngrok |
+| `ALLOW_GUEST_JOURNAL` | Demo | `true` lets you use `?user=Name` without email |
+| `ELEVENLABS_VOICE_ID` | Optional | Narrator voice for generated audio |
 
----
-
-## Demo video (hackathon submission)
-
-Full shot list, captions, TikTok cut, and prep script:
+## Demo Video
 
 ```bash
-npm run prep:demo-video   # seed data + voice stack + memoir
+npm run prep:demo-video
 ```
 
-See **[docs/HACKATHON_DEMO_VIDEO.md](docs/HACKATHON_DEMO_VIDEO.md)** for the 60–75s judge cut and 25–30s viral cut.
-
----
-
-## Tech stack
-
-- **Next.js 16** — App Router UI + API routes
-- **@elevenlabs/elevenlabs-js** — Speech Engine server, TTS, Music API
-- **@elevenlabs/client** — Browser WebRTC conversation
-- **OpenAI** — Agent logic, transcript analysis, memoir script
-- **Supabase Postgres** — Journal memory + auth (magic link)
-- **Supabase Storage** — Weekly voice recaps & memoir audio
-
----
+See [docs/HACKATHON_DEMO_VIDEO.md](docs/HACKATHON_DEMO_VIDEO.md).
 
 ## License
 

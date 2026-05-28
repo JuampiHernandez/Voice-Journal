@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LocalSetupGuide } from "@/components/LocalSetupGuide";
 
 export default function Home() {
   return (
@@ -86,36 +87,16 @@ export default function Home() {
               to any URL, or sign in with a magic link (nav bar).
             </li>
             <li>
-              <strong className="text-stone-300">Live voice:</strong> needs Speech Engine hosted
-              (see deploy docs) — insights &amp; memoir work without it.
+              <strong className="text-stone-300">Live voice:</strong> fork the app and run it on
+              localhost with ngrok. Production intentionally shows setup instructions instead of
+              starting voice.
             </li>
           </ul>
         </section>
 
-        <section className="mt-12 rounded-2xl border border-stone-800 bg-stone-900/40 p-8">
-          <h2 className="text-lg font-medium text-stone-200">Run locally (full Speech Engine)</h2>
-          <p className="mt-2 text-sm text-stone-500">
-            Prefer your machine? Same app, Supabase for storage — voice via ngrok.
-          </p>
-          <pre className="mt-4 overflow-x-auto rounded-xl border border-stone-800 bg-stone-950 p-4 text-xs text-stone-400 leading-relaxed">
-{`npm install
-cp .env.example .env
-# Fill: ELEVENLABS_API_KEY, OPENAI_API_KEY, Supabase keys
-# Apply supabase/migrations/*.sql in Supabase SQL editor
-# Create Storage bucket: journal-audio (private)
-
-npm run dev                    # Next.js → http://localhost:3001
-npm run speech-engine          # Terminal 2
-ngrok http 3002                # Terminal 3 → set SPEECH_ENGINE_WS_URL in .env
-npm run setup:speech-engine    # once
-
-ALLOW_GUEST_JOURNAL=true       # optional: ?user= judge ids without email`}
-          </pre>
-          <p className="mt-4 text-xs text-stone-600">
-            See <code className="text-stone-500">docs/DEPLOY.md</code> for Vercel + Supabase + Railway
-            speech-engine setup.
-          </p>
-        </section>
+        <div className="mt-12">
+          <LocalSetupGuide />
+        </div>
       </div>
     </div>
   );

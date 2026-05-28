@@ -6,6 +6,7 @@ import { Conversation } from "@elevenlabs/client";
 import type { DisconnectionDetails, Mode, Status } from "@elevenlabs/client";
 import { TimerRing } from "./TimerRing";
 import { VoiceWave } from "./VoiceWave";
+import { LocalSetupGuide } from "./LocalSetupGuide";
 import { authConfigured, useJournalUser } from "@/hooks/useJournalUser";
 
 const SESSION_SECONDS = 180;
@@ -20,6 +21,15 @@ type DebugEntry = { t: number; msg: string };
 
 function ts() {
   return new Date().toLocaleTimeString();
+}
+
+function isLocalHostname(hostname: string) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname.endsWith(".local")
+  );
 }
 
 export function VoiceJournalSession() {
@@ -38,9 +48,16 @@ export function VoiceJournalSession() {
   const [ngrokWarning, setNgrokWarning] = useState<string | null>(null);
   const [interruptionCount, setInterruptionCount] = useState(0);
   const [connectionLost, setConnectionLost] = useState(false);
+  const [isLocalRuntime, setIsLocalRuntime] = useState<boolean | null>(null);
+  const [debugConversationId, setDebugConversationId] = useState<string | null>(null);
+  const [debugHadActivity, setDebugHadActivity] = useState(false);
 
   useEffect(() => {
-    if (window.location.search.includes("debug")) setShowDebug(true);
+    const id = window.setTimeout(() => {
+      if (window.location.search.includes("debug")) setShowDebug(true);
+      setIsLocalRuntime(isLocalHostname(window.location.hostname));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   const conversationRef = useRef<Awaited<ReturnType<typeof Conversation.startSession>> | null>(
@@ -62,6 +79,8 @@ export function VoiceJournalSession() {
   }, []);
 
   useEffect(() => {
+    if (isLocalRuntime !== true) return;
+
     fetch("/api/config")
       .then((r) => r.json())
       .then((data) => {
@@ -71,7 +90,7 @@ export function VoiceJournalSession() {
           const msg =
             data.speechEngineTunnelError ??
             data.ngrokTunnelError ??
-            "Speech Engine offline — check Railway deploy or run npm run dev:voice locally";
+            "Speech Engine offline — run npm run dev:full locally and confirm ngrok is connected";
           setNgrokWarning(msg);
           log(`Speech Engine tunnel OFFLINE: ${msg}`);
         } else {
@@ -85,12 +104,12 @@ export function VoiceJournalSession() {
         } else if (!data.speechEngineHealth?.ok) {
           setSetupError(
             data.speechEngineHealth?.error ??
-              "Speech Engine server unreachable. Deploy to Railway or run npm run speech-engine locally."
+              "Speech Engine server unreachable. Run npm run dev:full locally."
           );
         }
       })
       .catch(() => setSetupError("Could not verify Speech Engine configuration."));
-  }, [log]);
+  }, [isLocalRuntime, log]);
 
   const waitForServerSave = useCallback(
     async (maxAttempts = SERVER_POLL_ATTEMPTS, delayMs = 1000) => {
@@ -294,7 +313,7 @@ export function VoiceJournalSession() {
         : "No speech was captured.";
       setError(
         `${reason} (${secs}s, ${lines} client lines). ` +
-          `Tap Start to try again. If this keeps happening, check Speech Engine on Railway (/health) or your network.`
+          `Tap Start to try again. If this keeps happening, restart npm run dev:full and ngrok.`
       );
       connectionLostRef.current = false;
       disconnectHandledRef.current = false;
@@ -378,10 +397,12 @@ export function VoiceJournalSession() {
     setAgentText("");
     userTranscriptRef.current = [];
     conversationIdRef.current = null;
+    setDebugConversationId(null);
     sessionStartedAtRef.current = Date.now();
     isEndingRef.current = false;
     userEndedRef.current = false;
     hadActivityRef.current = false;
+    setDebugHadActivity(false);
     setInterruptionCount(0);
     setDebugLog([]);
 
@@ -416,11 +437,13 @@ export function VoiceJournalSession() {
         },
         onInterruption: () => {
           hadActivityRef.current = true;
+          setDebugHadActivity(true);
           setInterruptionCount((n) => n + 1);
           log("barge-in: turn interrupted");
         },
         onConnect: ({ conversationId }) => {
           conversationIdRef.current = conversationId;
+          setDebugConversationId(conversationId);
           log(`connected: ${conversationId}`);
           setStatus("active");
         },
@@ -432,7 +455,7 @@ export function VoiceJournalSession() {
             setSaveStatus(null);
             return;
           }
-          setError(`Voice error: ${message}. Is Speech Engine deployed (Railway) or running locally?`);
+          setError(`Voice error: ${message}. Is npm run dev:full running locally?`);
           setStatus("error");
           setShowDebug(true);
         },
@@ -452,21 +475,29 @@ export function VoiceJournalSession() {
         },
         onModeChange: ({ mode: m }) => {
           setMode(m);
-          if (m === "listening") hadActivityRef.current = true;
+          if (m === "listening") {
+            hadActivityRef.current = true;
+            setDebugHadActivity(true);
+          }
         },
         onVadScore: ({ vadScore: score }) => {
           setVadScore(score);
-          if (score > 0.5) hadActivityRef.current = true;
+          if (score > 0.5) {
+            hadActivityRef.current = true;
+            setDebugHadActivity(true);
+          }
         },
         onMessage: (msg) => {
           if (msg.source === "ai" || msg.role === "agent") {
             hadActivityRef.current = true;
+            setDebugHadActivity(true);
             setAgentText(msg.message);
             log(`agent: ${msg.message.slice(0, 80)}`);
             return;
           }
           if (msg.source === "user" || msg.role === "user") {
             hadActivityRef.current = true;
+            setDebugHadActivity(true);
             const lines = userTranscriptRef.current;
             const last = lines[lines.length - 1];
             if (msg.message !== last) {
@@ -511,14 +542,23 @@ export function VoiceJournalSession() {
     return () => window.removeEventListener("beforeunload", onUnload);
   }, []);
 
-  const elapsedSec =
-    status !== "idle"
-      ? Math.round((Date.now() - sessionStartedAtRef.current) / 1000)
-      : 0;
+  const elapsedSec = status !== "idle" ? SESSION_SECONDS - secondsLeft : 0;
 
   const agentSpeaking = status === "active" && mode === "speaking";
   const userSpeaking = status === "active" && mode === "listening" && vadScore > 0.35;
   const sessionNotice = setupError ?? (!setupError && ngrokWarning ? ngrokWarning : null);
+
+  if (isLocalRuntime === false) {
+    return (
+      <div className="w-full max-w-2xl">
+        <LocalSetupGuide compact source="checkin" />
+      </div>
+    );
+  }
+
+  if (isLocalRuntime === null) {
+    return <p className="text-sm text-stone-500">Checking local voice environment...</p>;
+  }
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-6">
@@ -671,8 +711,8 @@ export function VoiceJournalSession() {
               </div>
             )}
             <p className="mb-2 text-stone-400">
-              conv: {conversationIdRef.current ?? "—"} · {elapsedSec}s · activity=
-              {String(hadActivityRef.current)}
+              conv: {debugConversationId ?? "—"} · {elapsedSec}s · activity=
+              {String(debugHadActivity)}
             </p>
             {debugLog.length === 0 ? (
               <p>No events yet</p>

@@ -2,22 +2,11 @@ import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { verifyPublicWsTunnel } from "./elevenlabs-conversation";
 import { syncSpeechEngineConversationConfig } from "./speech-engine-config";
 
-/** Resolve public wss URL from env (explicit, Railway, or null). */
+/** Resolve public wss URL from env (explicit local/ngrok URL, or null). */
 export function resolveSpeechEngineWsUrl(): string | null {
   const explicit = process.env.SPEECH_ENGINE_WS_URL?.trim();
   if (explicit?.startsWith("wss://")) {
     return explicit.replace(/\/+$/, "").replace(/\/ws\/?$/, "") + "/ws";
-  }
-
-  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  if (railwayDomain) {
-    return `wss://${railwayDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/ws`;
-  }
-
-  const staticUrl = process.env.RAILWAY_STATIC_URL?.trim();
-  if (staticUrl) {
-    const host = staticUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-    return `wss://${host}/ws`;
   }
 
   return null;
@@ -72,7 +61,7 @@ export async function syncSpeechEngineWsUrl(): Promise<{
     return {
       ok: false,
       error:
-        "Missing SPEECH_ENGINE_WS_URL (or RAILWAY_PUBLIC_DOMAIN on Railway, or ngrok for local dev)",
+        "Missing SPEECH_ENGINE_WS_URL (run ngrok http 3002, then npm run setup:speech-engine)",
     };
   }
 

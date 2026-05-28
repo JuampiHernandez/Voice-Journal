@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       {
         error: "Speech Engine not configured",
         missing: config.missing,
-        hint: "Deploy speech-engine (Railway/Fly) and set SPEECH_ENGINE_WS_URL, or run locally with ngrok",
+        hint: "Run locally with ngrok: npm run dev:full",
       },
       { status: 503 }
     );
