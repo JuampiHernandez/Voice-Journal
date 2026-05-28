@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveJournalUserId } from "@/lib/auth/resolve-user";
 import { ensureUser } from "@/lib/memory";
+import { isReadOnlyRuntime } from "@/lib/runtime";
+import { ensureShowcaseSeeded } from "@/lib/showcase-seed";
 
-export async function withJournalUser(
+export function withJournalUser(
   request: NextRequest,
   requestedUserId?: string | null
-): Promise<{ userId: string; mode: "auth" | "guest" } | NextResponse> {
-  const resolved = await resolveJournalUserId(request, requestedUserId);
+): { userId: string; mode: "local" } | NextResponse {
+  const resolved = resolveJournalUserId(request, requestedUserId);
   if (resolved instanceof NextResponse) return resolved;
-  await ensureUser(resolved.userId);
+  ensureUser(resolved.userId);
+  if (isReadOnlyRuntime()) {
+    ensureShowcaseSeeded(resolved.userId);
+  }
   return resolved;
 }

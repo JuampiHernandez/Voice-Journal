@@ -7,7 +7,8 @@ import type { DisconnectionDetails, Mode, Status } from "@elevenlabs/client";
 import { TimerRing } from "./TimerRing";
 import { VoiceWave } from "./VoiceWave";
 import { LocalSetupGuide } from "./LocalSetupGuide";
-import { authConfigured, useJournalUser } from "@/hooks/useJournalUser";
+import { useJournalUser } from "@/hooks/useJournalUser";
+import { isLocalHostname } from "@/lib/runtime";
 
 const SESSION_SECONDS = 180;
 const MIN_SESSION_MS = 8000; // don't treat disconnect as "done" before this unless we heard speech
@@ -23,17 +24,8 @@ function ts() {
   return new Date().toLocaleTimeString();
 }
 
-function isLocalHostname(hostname: string) {
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    hostname.endsWith(".local")
-  );
-}
-
 export function VoiceJournalSession() {
-  const { userId, ready, mode: journalMode } = useJournalUser();
+  const { userId, ready } = useJournalUser();
   const [status, setStatus] = useState<SessionStatus>("idle");
   const [secondsLeft, setSecondsLeft] = useState(SESSION_SECONDS);
   const [error, setError] = useState<string | null>(null);
@@ -86,10 +78,9 @@ export function VoiceJournalSession() {
       .then((data) => {
         log(`config: speechEngineReady=${data.speechEngineReady}, health=${data.speechEngineHealth?.ok}`);
         if (data.speechEngineWsUrl) log(`wsUrl: ${data.speechEngineWsUrl}`);
-        if (data.speechEngineTunnelReachable === false || data.ngrokTunnelReachable === false) {
+        if (data.speechEngineTunnelReachable === false) {
           const msg =
             data.speechEngineTunnelError ??
-            data.ngrokTunnelError ??
             "Speech Engine offline — run npm run dev:full locally and confirm ngrok is connected";
           setNgrokWarning(msg);
           log(`Speech Engine tunnel OFFLINE: ${msg}`);
@@ -591,16 +582,6 @@ export function VoiceJournalSession() {
             &ldquo;{agentText}&rdquo;
           </p>
         </div>
-      )}
-
-      {ready && journalMode === "guest" && authConfigured() && (
-        <p className="w-full rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-center text-xs text-amber-200/90">
-          Not signed in — this check-in saves to a guest profile.{" "}
-          <Link href="/login" className="underline hover:text-amber-100">
-            Sign in
-          </Link>{" "}
-          so it appears in Insights.
-        </p>
       )}
 
       {error && (

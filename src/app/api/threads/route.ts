@@ -3,16 +3,17 @@ import { getRecentEntries, getWorryThreadSnapshot, saveWorryThreadSnapshot } fro
 import { generateMindThreads } from "@/lib/analysis";
 import { getAppConfig } from "@/lib/config";
 import { withJournalUser } from "@/lib/auth/api-context";
+import { rejectIfReadOnly } from "@/lib/auth/read-only";
 
 export async function GET(request: NextRequest) {
-  const ctx = await withJournalUser(
+  const ctx = withJournalUser(
     request,
     request.nextUrl.searchParams.get("userId")
   );
   if (ctx instanceof NextResponse) return ctx;
   const { userId } = ctx;
 
-  const snapshot = await getWorryThreadSnapshot(userId);
+  const snapshot = getWorryThreadSnapshot(userId);
   if (!snapshot) {
     return NextResponse.json({
       threads: [],
@@ -27,8 +28,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const blocked = rejectIfReadOnly("Thread mapping");
+  if (blocked) return blocked;
+
   const body = (await request.json().catch(() => ({}))) as { userId?: string };
-  const ctx = await withJournalUser(request, body.userId);
+  const ctx = withJournalUser(request, body.userId);
   if (ctx instanceof NextResponse) return ctx;
   const { userId } = ctx;
 
@@ -37,7 +41,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "OPENAI_API_KEY required" }, { status: 503 });
   }
 
-  const entries = (await getRecentEntries(userId, 30))
+  const entries = (getRecentEntries(userId, 30))
     .filter((e) => e.summary && e.summary !== "Processing your check-in…")
     .map((e) => ({
       date: e.entry_date,
@@ -57,7 +61,7 @@ export async function POST(request: NextRequest) {
   try {
     const { threads, focusRecommendation, brightThreads, celebrateRecommendation } =
       await generateMindThreads(entries);
-    await saveWorryThreadSnapshot(
+    saveWorryThreadSnapshot(
       userId,
       threads,
       focusRecommendation,

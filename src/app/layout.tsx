@@ -32,8 +32,8 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-stone-950 text-stone-200">
         <Nav />
         <main className="flex-1">{children}</main>
-        <footer className="border-t border-stone-800/60 py-6 text-center text-xs text-stone-600">
-          Built for #ElevenHacks · Speech Engine + Eleven Music · @elevenlabsio
+        <footer className="py-5 text-center text-[0.65rem] text-stone-700">
+          Built for #ElevenHacks · Speech Engine + Eleven Music
         </footer>
       </body>
     </html>

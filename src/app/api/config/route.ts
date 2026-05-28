@@ -2,16 +2,22 @@ import { NextResponse } from "next/server";
 import { getAppConfig } from "@/lib/config";
 import { resolveSpeechEngineWsUrl, syncSpeechEngineWsUrl } from "@/lib/speech-engine-sync";
 import { verifyPublicWsTunnel } from "@/lib/elevenlabs-conversation";
-import { isSupabaseConfigured } from "@/lib/supabase/admin";
-import { guestJournalAllowed } from "@/lib/auth/resolve-user";
+import { isReadOnlyRuntime } from "@/lib/runtime";
+import { SHOWCASE_USERS } from "@/lib/showcase-users";
 
 export async function GET() {
   const config = getAppConfig();
-  const wsUrl = resolveSpeechEngineWsUrl() ?? process.env.SPEECH_ENGINE_WS_URL;
+  const envWsUrl = resolveSpeechEngineWsUrl() ?? process.env.SPEECH_ENGINE_WS_URL;
+  const sync = await syncSpeechEngineWsUrl();
+  const wsUrl = sync.expected ?? envWsUrl;
 
   let speechEngineHealth: { ok: boolean; error?: string } = { ok: false };
 
-  if (wsUrl?.startsWith("wss://")) {
+  if (sync.expected) {
+    speechEngineHealth = sync.tunnelReachable
+      ? { ok: true }
+      : { ok: false, error: sync.tunnelError ?? sync.error ?? "Speech Engine tunnel unreachable" };
+  } else if (wsUrl?.startsWith("wss://")) {
     const tunnel = await verifyPublicWsTunnel(wsUrl);
     speechEngineHealth = tunnel.reachable
       ? { ok: true }
@@ -31,22 +37,19 @@ export async function GET() {
     }
   }
 
-  const sync = await syncSpeechEngineWsUrl();
+  const tunnelReachable = sync.tunnelReachable ?? speechEngineHealth.ok;
+  const tunnelError = tunnelReachable
+    ? null
+    : sync.tunnelError ?? sync.error ?? speechEngineHealth.error ?? null;
 
   return NextResponse.json({
     ...config,
-    supabaseReady: isSupabaseConfigured(),
-    guestJournalAllowed: guestJournalAllowed(),
+    readOnly: isReadOnlyRuntime(),
+    showcaseUsers: SHOWCASE_USERS,
     speechEngineHealth,
-    speechEngineWsUrl: sync.expected ?? wsUrl,
-    speechEngineWsSynced: sync.ok && !sync.updated,
-    speechEngineWsUpdated: sync.updated ?? false,
-    speechEngineTunnelReachable: sync.tunnelReachable ?? speechEngineHealth.ok,
-    speechEngineTunnelError: sync.tunnelError ?? sync.error ?? speechEngineHealth.error ?? null,
-    /** @deprecated use speechEngineTunnelReachable */
-    ngrokTunnelReachable: sync.tunnelReachable ?? speechEngineHealth.ok,
-    /** @deprecated use speechEngineTunnelError */
-    ngrokTunnelError: sync.tunnelError ?? sync.error ?? speechEngineHealth.error ?? null,
+    speechEngineWsUrl: wsUrl,
+    speechEngineTunnelReachable: tunnelReachable,
+    speechEngineTunnelError: tunnelError,
     speechEngineId: process.env.SPEECH_ENGINE_ID ?? null,
   });
 }

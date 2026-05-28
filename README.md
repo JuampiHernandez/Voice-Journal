@@ -6,54 +6,33 @@ Built for [#ElevenHacks](https://elevenlabs.io) with **ElevenLabs Speech Engine*
 
 Production is intentionally demo-only for voice. The deployed app shows dashboards, insights, threads, memoir, and local setup instructions. Live voice check-ins run on **localhost + ngrok**.
 
+Journal data is stored in **SQLite** at `data/voice-journal.db` (gitignored). A fresh clone or fork starts with an **empty** database — your entries are never committed to git.
+
 ## Quick Start: Local Voice
 
-Install ngrok and authenticate it once:
-
-```bash
-ngrok config add-authtoken YOUR_NGROK_TOKEN
-```
-
-Clone and install:
+**Full command list:** [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)
 
 ```bash
 git clone https://github.com/JuampiHernandez/Voice-Journal.git
 cd Voice-Journal
 npm install
 cp .env.example .env
-```
+# Edit .env: ELEVENLABS_API_KEY, OPENAI_API_KEY
 
-Fill `.env`:
-
-```bash
-ELEVENLABS_API_KEY=your_elevenlabs_key
-OPENAI_API_KEY=your_openai_key
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-ALLOW_GUEST_JOURNAL=true
-```
-
-First time only, create/sync the Speech Engine:
-
-```bash
+# Terminal A (first time only, keep running):
 ngrok http 3002
 
-# In a second terminal:
+# Terminal B (first time only):
 npm run setup:speech-engine
-```
 
-After that, run everything with:
-
-```bash
+# Every day:
 npm run dev:full
+# → http://localhost:3001/journal?user=YourName
 ```
 
-Open:
+Use `?user=YourName` so each person on the same machine gets a separate journal (stored in this browser’s `localStorage`). The database file `data/voice-journal.db` is gitignored — forks start empty.
 
-```bash
-http://localhost:3001/journal?user=YourName
-```
+**Optional:** copy an existing Supabase project once with `npm run migrate:supabase` (see [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)).
 
 ## Production
 
@@ -74,10 +53,9 @@ Browser on localhost ── ElevenLabs client ── ElevenLabs STT/TTS
        │                                      │
        │                                      ▼
        ├── Next.js app (:3001)          ngrok public URL
-       │                                      │
-       └── Supabase data ◄── Speech Engine server (:3002)
-                               │
-                               └── OpenAI agent + analysis
+       │         │                            │
+       │         └── SQLite (data/)           ▼
+       └── Speech Engine server (:3002) ◄── OpenAI agent + analysis
 ```
 
 ## Pages
@@ -96,12 +74,9 @@ Browser on localhost ── ElevenLabs client ── ElevenLabs STT/TTS
 |----------|----------|-------------|
 | `ELEVENLABS_API_KEY` | Yes | ElevenLabs API key |
 | `OPENAI_API_KEY` | Yes | LLM for agent, analysis, memoir script |
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side DB key |
 | `SPEECH_ENGINE_ID` | Local voice | Written by `npm run setup:speech-engine` |
 | `SPEECH_ENGINE_WS_URL` | Local voice | Written by `npm run setup:speech-engine` from ngrok |
-| `ALLOW_GUEST_JOURNAL` | Demo | `true` lets you use `?user=Name` without email |
+| `DEFAULT_USER_ID` | Optional | Fallback when no `?user=` (default `demo-user`) |
 | `ELEVENLABS_VOICE_ID` | Optional | Narrator voice for generated audio |
 
 ## Demo Video

@@ -63,7 +63,7 @@ export async function analyzeTranscript(transcript: string): Promise<EntryAnalys
         role: "system",
         content: `You analyze voice journal transcripts for a supportive companion app (not clinical therapy).
 Return JSON:
-- summary: 2-3 sentences, second person, warm and specific
+- summary: one sentence, second person, warm and specific, max 140 characters — only what they said in this check-in, not recurring themes from other days
 - mood: 0-10 float
 - themes: 2-5 short tags
 - openThread: one unresolved topic to follow up tomorrow (or null)

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getDb } from "@/lib/db";
+import { isEntryAnalysisReady } from "@/lib/memory";
 import { withJournalUser } from "@/lib/auth/api-context";
 
 export async function GET(request: NextRequest) {
-  const ctx = await withJournalUser(
+  const ctx = withJournalUser(
     request,
     request.nextUrl.searchParams.get("userId")
   );
@@ -16,22 +17,26 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ saved: false });
   }
 
-  const { data: entry } = await createAdminClient()
-    .from("journal_entries")
-    .select("id, entry_date, summary")
-    .eq("user_id", userId)
-    .eq("conversation_id", conversationId)
-    .maybeSingle();
+  const row = getDb()
+    .prepare(
+      "SELECT id, entry_date, summary FROM journal_entries WHERE user_id = ? AND conversation_id = ?"
+    )
+    .get(userId, conversationId) as
+    | { id: string; entry_date: string; summary: string | null }
+    | undefined;
 
-  if (!entry) {
+  if (!row) {
     return NextResponse.json({ saved: false, conversationId, reason: "no_entry" });
   }
 
+  const ready = isEntryAnalysisReady(row.summary);
+
   return NextResponse.json({
-    saved: true,
-    entryId: entry.id,
-    entryDate: entry.entry_date,
-    summary: entry.summary,
+    saved: ready,
+    processing: !ready,
+    entryId: row.id,
+    entryDate: row.entry_date,
+    summary: row.summary,
     conversationId,
   });
 }

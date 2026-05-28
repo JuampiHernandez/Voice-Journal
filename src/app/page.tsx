@@ -1,112 +1,165 @@
-import Link from "next/link";
-import { LocalSetupGuide } from "@/components/LocalSetupGuide";
+import { LandingCheckInPreview } from "@/components/LandingCheckInPreview";
+import { LandingSetupSection } from "@/components/LandingSetupSection";
+import { ProductionOnly } from "@/components/ProductionOnly";
+import { ShowcaseUserPicker } from "@/components/ShowcaseUserPicker";
+import { HeroCta } from "@/components/HeroCta";
+import { SpeechEngineBenefits } from "@/components/SpeechEngineBenefits";
 
 export default function Home() {
   return (
     <div className="relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/20 via-stone-950 to-stone-950" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-900/15 via-stone-950 to-stone-950" />
 
-      <div className="relative mx-auto max-w-5xl px-6 py-20 sm:py-28">
-        <p className="mb-4 text-sm uppercase tracking-[0.2em] text-amber-500/80">
-          #ElevenHacks · Speech Engine
-        </p>
+      <div className="relative mx-auto max-w-6xl px-6 pb-16 pt-12 sm:pt-16 lg:pb-20">
+        {/* Hero */}
+        <section className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-amber-500/90">
+              Private. Local. Your story.
+            </p>
 
-        <h1 className="max-w-2xl text-4xl sm:text-6xl font-light leading-tight text-stone-50">
-          Daily 3-min check-ins that become your{" "}
-          <span className="text-amber-400">yearly memoir</span>
-        </h1>
+            <h1 className="mt-5 text-4xl font-light leading-[1.1] tracking-tight text-stone-50 sm:text-5xl lg:text-[3.25rem]">
+              Daily 3-minute check-ins that become your{" "}
+              <span className="text-amber-400">yearly memoir.</span>
+            </h1>
 
-        <p className="mt-6 max-w-xl text-lg text-stone-400 leading-relaxed">
-          A voice companion that remembers you — not just a dump folder. Daily check-ins with
-          emotional support, worry-thread maps, weekly voice recaps, and a narrated year-end memoir.
-        </p>
+            <p className="mt-5 max-w-lg text-base leading-relaxed text-stone-500 sm:text-lg">
+              A private voice companion that grows with you. Local-first. AI-powered. Always yours.
+            </p>
 
-        <div className="mt-10 flex flex-wrap gap-4">
-          <Link
-            href="/journal"
-            className="rounded-full bg-amber-500 px-8 py-3.5 text-sm font-medium text-stone-950 hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/25"
-          >
-            Start today&apos;s check-in
-          </Link>
-          <Link
-            href="/dashboard"
-            className="rounded-full border border-stone-700 px-8 py-3.5 text-sm text-stone-300 hover:bg-stone-900 transition-colors"
-          >
-            See what the AI noticed
-          </Link>
-        </div>
+            <HeroCta />
+          </div>
 
-        <blockquote className="mt-16 max-w-lg border-l-2 border-amber-500/50 pl-5 text-stone-400 italic">
-          &ldquo;I voice-journaled every day for a month. Here&apos;s what the AI noticed.&rdquo;
-          <span className="mt-2 block text-xs not-italic text-stone-600">— 5-sec TikTok hook</span>
-        </blockquote>
+          <LandingCheckInPreview />
+        </section>
 
-        <div className="mt-20 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Judges — production only */}
+        <ProductionOnly>
+          <section className="mt-20 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8">
+            <h2 className="text-lg font-medium text-amber-200/90">For judges &amp; visitors</h2>
+            <ul className="mt-4 space-y-2 text-sm text-stone-400">
+              <li>
+                <strong className="text-stone-300">On this site:</strong> open the demo journal →
+                explore Insights, Threads, and Memoir. View-only — no voice input here.
+              </li>
+              <li>
+                <strong className="text-stone-300">Live voice check-in:</strong> fork the repo, run{" "}
+                <code className="rounded bg-stone-800 px-1.5 py-0.5 text-amber-200/90">
+                  npm run dev:full
+                </code>{" "}
+                on localhost with ngrok.
+              </li>
+            </ul>
+            <div className="mt-6">
+              <ShowcaseUserPicker />
+            </div>
+          </section>
+        </ProductionOnly>
+
+        {/* Features */}
+        <section className="mt-20 grid gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
           <Feature
+            icon={<MicIcon />}
             title="Speech Engine"
-            desc="ElevenLabs handles STT + TTS. Your server owns the LLM logic, memory, and analysis."
+            desc="Local AI turns your voice into memory."
           />
           <Feature
-            title="Weekly voice recap"
-            desc="Your companion reads back what it noticed each week — insights, patterns, and a voice summary."
+            icon={<CalendarIcon />}
+            title="Weekly recap"
+            desc="AI summaries of what mattered, privately."
           />
           <Feature
-            title="Threads & support"
-            desc="Visual map of what's weighing on you — with focus suggestions and weekly voice recaps."
+            icon={<ThreadsIcon />}
+            title="Threads"
+            desc="Visual maps of your thoughts over time."
           />
           <Feature
-            title="Eleven Music memoir"
-            desc="Year-end narrative TTS + ambient score generated via Eleven Music API."
+            icon={<MusicIcon />}
+            title="Year-end memoir"
+            desc="A narrated memoir generated with Eleven Music API."
           />
-        </div>
-
-        <section className="mt-20 rounded-2xl border border-stone-800 bg-stone-900/40 p-8">
-          <h2 className="text-lg font-medium text-stone-200">Why Speech Engine, not ElevenAgents?</h2>
-          <p className="mt-3 text-sm text-stone-400 leading-relaxed max-w-2xl">
-            ElevenAgents is optimized for managed, low-latency voice agents — but long-running
-            personalized memory (a year of journal entries, emotional timelines, weekly pattern
-            analysis) belongs on <em>your</em> infrastructure. Speech Engine is the perfect split:
-            ElevenLabs powers the voice layer; your database owns the journal — not Eleven&apos;s agent
-            memory.
-          </p>
         </section>
 
-        <section className="mt-12 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8">
-          <h2 className="text-lg font-medium text-amber-200/90">Try it (judges &amp; visitors)</h2>
-          <ul className="mt-4 space-y-2 text-sm text-stone-400">
-            <li>
-              <strong className="text-stone-300">Web (no install):</strong> open the deployed app →{" "}
-              <Link href="/dashboard" className="text-amber-400 hover:underline">
-                Insights
-              </Link>{" "}
-              → <em>Load demo week</em> → generate weekly recap → Memoir.
-            </li>
-            <li>
-              <strong className="text-stone-300">Your own data:</strong> add{" "}
-              <code className="rounded bg-stone-800 px-1.5 py-0.5 text-amber-200/90">?user=YourName</code>{" "}
-              to any URL, or sign in with a magic link (nav bar).
-            </li>
-            <li>
-              <strong className="text-stone-300">Live voice:</strong> fork the app and run it on
-              localhost with ngrok. Production intentionally shows setup instructions instead of
-              starting voice.
-            </li>
-          </ul>
-        </section>
-
-        <div className="mt-12">
-          <LocalSetupGuide />
+        {/* Setup */}
+        <div className="mt-20">
+          <LandingSetupSection />
         </div>
+
+        <SpeechEngineBenefits />
       </div>
     </div>
   );
 }
 
-function Feature({ title, desc }: { title: string; desc: string }) {
+function Feature({
+  icon,
+  title,
+  desc,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+}) {
   return (
-    <div className="rounded-2xl border border-stone-800/80 bg-stone-900/30 p-6">
-      <h3 className="font-medium text-amber-200/90">{title}</h3>
-      <p className="mt-2 text-sm text-stone-500 leading-relaxed">{desc}</p>
+    <div className="flex flex-col items-start">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400">
+        {icon}
+      </span>
+      <h3 className="mt-4 text-sm font-medium text-stone-200">{title}</h3>
+      <p className="mt-1.5 text-sm leading-relaxed text-stone-500">{desc}</p>
     </div>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M5 11a7 7 0 0 0 14 0M12 18v3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="5" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M4 9h16M8 3v4M16 3v4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ThreadsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="6" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="18" cy="6" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="12" cy="18" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 7.5l3.5 8M16 7.5l-3.5 8" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function MusicIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M9 18V6l10-2v12M9 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm10-2a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

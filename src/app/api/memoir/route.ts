@@ -1,26 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { getYearEntries } from "@/lib/memory";
+import { getYearEntries, getMemoir, saveMemoir } from "@/lib/memory";
 import { generateMemoirScript } from "@/lib/analysis";
 import { generateNarrationBuffer, generateMemoirMusicBuffer } from "@/lib/elevenlabs";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { withJournalUser } from "@/lib/auth/api-context";
-import {
-  uploadAudio,
-  memoirNarrationPath,
-  memoirMusicPath,
-  getAudioSignedUrl,
-} from "@/lib/storage";
+import { uploadAudio, memoirNarrationPath, memoirMusicPath } from "@/lib/storage";
+import { rejectIfReadOnly } from "@/lib/auth/read-only";
 
 export async function POST(request: NextRequest) {
+  const blocked = rejectIfReadOnly("Memoir generation");
+  if (blocked) return blocked;
   const body = (await request.json()) as { userId?: string; year?: number };
-  const ctx = await withJournalUser(request, body.userId);
+  const ctx = withJournalUser(request, body.userId);
   if (ctx instanceof NextResponse) return ctx;
   const { userId } = ctx;
 
   const year = body.year ?? new Date().getFullYear();
 
-  const entries = (await getYearEntries(userId, year)).map((e) => ({
+  const entries = getYearEntries(userId, year).map((e) => ({
     date: e.entry_date,
     summary: e.summary ?? e.transcript.slice(0, 300),
     mood: e.mood,
@@ -46,38 +43,24 @@ export async function POST(request: NextRequest) {
     const script = await generateMemoirScript(year, entries);
     const narrationBuffer = await generateNarrationBuffer(script);
     const musicBuffer = await generateMemoirMusicBuffer();
-    await uploadAudio(narrationStorage, narrationBuffer);
-    await uploadAudio(musicStorage, musicBuffer);
+    uploadAudio(narrationStorage, narrationBuffer);
+    uploadAudio(musicStorage, musicBuffer);
 
-    const supabase = createAdminClient();
-    const { data: existing } = await supabase
-      .from("memoirs")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("year", year)
-      .maybeSingle();
-
-    const row = {
-      user_id: userId,
+    saveMemoir({
+      userId,
       year,
       script,
-      narration_path: narrationStorage,
-      music_path: musicStorage,
-      status: "ready",
-    };
-
-    if (existing?.id) {
-      await supabase.from("memoirs").update(row).eq("id", existing.id);
-    } else {
-      await supabase.from("memoirs").insert({ id: memoirId, ...row });
-    }
+      narrationPath: narrationStorage,
+      musicPath: musicStorage,
+      memoirId,
+    });
 
     return NextResponse.json({
       id: memoirId,
       year,
       script,
-      narrationUrl: `/api/memoir/audio?year=${year}&type=narration`,
-      musicUrl: `/api/memoir/audio?year=${year}&type=music`,
+      narrationUrl: `/api/memoir/audio?userId=${encodeURIComponent(userId)}&year=${year}&type=narration`,
+      musicUrl: `/api/memoir/audio?userId=${encodeURIComponent(userId)}&year=${year}&type=music`,
       entryCount: entries.length,
     });
   } catch (err) {
@@ -89,7 +72,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const ctx = await withJournalUser(
+  const ctx = withJournalUser(
     request,
     request.nextUrl.searchParams.get("userId")
   );
@@ -98,15 +81,8 @@ export async function GET(request: NextRequest) {
 
   const year = Number(request.nextUrl.searchParams.get("year") ?? new Date().getFullYear());
 
-  const { data: memoir } = await createAdminClient()
-    .from("memoirs")
-    .select("script, narration_path, music_path")
-    .eq("user_id", userId)
-    .eq("year", year)
-    .eq("status", "ready")
-    .maybeSingle();
-
-  if (!memoir) {
+  const memoir = getMemoir(userId, year);
+  if (!memoir || memoir.status !== "ready") {
     return NextResponse.json({ exists: false });
   }
 
@@ -114,7 +90,7 @@ export async function GET(request: NextRequest) {
     exists: true,
     year,
     script: memoir.script,
-    narrationUrl: `/api/memoir/audio?year=${year}&type=narration`,
-    musicUrl: `/api/memoir/audio?year=${year}&type=music`,
+    narrationUrl: `/api/memoir/audio?userId=${encodeURIComponent(userId)}&year=${year}&type=narration`,
+    musicUrl: `/api/memoir/audio?userId=${encodeURIComponent(userId)}&year=${year}&type=music`,
   });
 }

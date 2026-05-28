@@ -4,8 +4,11 @@ import { getEntryById, saveJournalEntry } from "@/lib/memory";
 import { getAppConfig } from "@/lib/config";
 import { analyzeTranscript } from "@/lib/analysis";
 import { withJournalUser } from "@/lib/auth/api-context";
+import { rejectIfReadOnly } from "@/lib/auth/read-only";
 
 export async function POST(request: NextRequest) {
+  const blocked = rejectIfReadOnly("Check-in");
+  if (blocked) return blocked;
   const body = (await request.json()) as {
     userId?: string;
     transcript?: string;
@@ -13,7 +16,7 @@ export async function POST(request: NextRequest) {
     conversationId?: string;
   };
 
-  const ctx = await withJournalUser(request, body.userId);
+  const ctx = withJournalUser(request, body.userId);
   if (ctx instanceof NextResponse) return ctx;
   const { userId } = ctx;
 
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
   try {
     const analysis = await analyzeTranscript(transcript);
 
-    const entryId = await saveJournalEntry({
+    const entryId = saveJournalEntry({
       userId,
       transcript,
       summary: analysis.summary,
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
       openThread: analysis.openThread,
     });
 
-    const saved = await getEntryById(userId, entryId);
+    const saved = getEntryById(userId, entryId);
 
     return NextResponse.json({
       saved: true,

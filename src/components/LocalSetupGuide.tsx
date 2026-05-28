@@ -9,11 +9,7 @@ npm install
 cp .env.example .env`;
 
 const envTemplate = `ELEVENLABS_API_KEY=your_elevenlabs_key
-OPENAI_API_KEY=your_openai_key
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-ALLOW_GUEST_JOURNAL=true`;
+OPENAI_API_KEY=your_openai_key`;
 
 const firstRunCommands = `ngrok http 3002
 
@@ -58,7 +54,9 @@ export function LocalSetupGuide({ compact = false, source = "home" }: LocalSetup
 
       <p className="mt-4 max-w-2xl text-sm leading-relaxed text-stone-400">
         The deployed site is for demo dashboards, insights, threads, and memoirs. Live voice needs a
-        local Speech Engine process, because the browser talks to your machine through ngrok.
+        local Speech Engine process, because the browser talks to your machine through ngrok. Journal
+        data lives in <code className="text-stone-300">data/voice-journal.db</code> (gitignored) — a
+        fresh fork starts with an empty database.
       </p>
 
       <div className="mt-6 grid gap-4">
@@ -67,7 +65,7 @@ export function LocalSetupGuide({ compact = false, source = "home" }: LocalSetup
           number="2"
           title="Fill .env"
           code={envTemplate}
-          helper="Paste your own keys into .env. Apply the Supabase SQL migration from supabase/migrations first."
+          helper="Only ElevenLabs and OpenAI keys are required. No cloud database setup."
         />
         <SetupStep
           number="3"
@@ -79,7 +77,7 @@ export function LocalSetupGuide({ compact = false, source = "home" }: LocalSetup
           number="4"
           title="Every time after that"
           code={dailyRunCommands}
-          helper="dev:full starts ngrok, the Speech Engine, syncs ElevenLabs, and starts Next.js on port 3001."
+          helper="dev:full starts ngrok, the Speech Engine, syncs ElevenLabs, and starts Next.js on port 3001. Use ?user=YourName so each person gets their own local journal."
         />
       </div>
     </section>

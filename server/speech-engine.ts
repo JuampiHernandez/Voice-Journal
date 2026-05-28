@@ -105,11 +105,11 @@ async function checkpointTranscript(
   };
 
   if (meta.entryId) {
-    await saveJournalEntry({ ...payload, entryId: meta.entryId });
+    saveJournalEntry({ ...payload, entryId: meta.entryId });
     return;
   }
 
-  meta.entryId = await saveJournalEntry(payload);
+  meta.entryId = saveJournalEntry(payload);
   console.log(`[SpeechEngine] checkpoint entry ${meta.entryId} for ${conversationId}`);
 }
 
@@ -131,7 +131,7 @@ async function persistSession(session: SpeechEngineSession, reason: string) {
     const durationSeconds = Math.round((Date.now() - meta.startedAt) / 1000);
 
     if (!meta.entryId) {
-      meta.entryId = await saveJournalEntry({
+      meta.entryId = saveJournalEntry({
         userId: meta.userId,
         transcript: userLines,
         summary: "Processing your check-in…",
@@ -141,7 +141,7 @@ async function persistSession(session: SpeechEngineSession, reason: string) {
         conversationId: session.conversationId,
       });
     } else {
-      await saveJournalEntry({
+      saveJournalEntry({
         userId: meta.userId,
         entryId: meta.entryId,
         transcript: userLines,
@@ -155,7 +155,7 @@ async function persistSession(session: SpeechEngineSession, reason: string) {
 
     const analysis = await analyzeTranscript(userLines);
 
-    await saveJournalEntry({
+    saveJournalEntry({
       userId: meta.userId,
       entryId: meta.entryId,
       transcript: userLines,
@@ -168,7 +168,7 @@ async function persistSession(session: SpeechEngineSession, reason: string) {
       openThread: analysis.openThread,
     });
 
-    const saved = await getEntryById(meta.userId, meta.entryId);
+    const saved = getEntryById(meta.userId, meta.entryId);
     console.log(`Saved journal entry (${reason}) for`, meta.userId, saved?.entry_date);
   } catch (err) {
     meta.saved = false;
@@ -197,7 +197,7 @@ async function main() {
     if (publicWs) {
       console.log(`Public WebSocket: ${publicWs}`);
     }
-    console.log(`Journal DB: Supabase (${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "not configured"})`);
+    console.log("Journal DB: SQLite (data/voice-journal.db)");
   });
 
   const missing = [
@@ -240,7 +240,7 @@ async function main() {
 
     async onInit(conversationId) {
       const userId = await consumePendingSessionUser();
-      await ensureUser(userId);
+      ensureUser(userId);
       sessionMetaByConversation.set(conversationId, {
         userId,
         startedAt: Date.now(),
@@ -254,7 +254,7 @@ async function main() {
       try {
         const meta = getSessionMeta(session);
         const userId = meta?.userId ?? "demo-user";
-        await ensureUser(userId);
+        ensureUser(userId);
 
         const userLines = transcript.filter((m) => m.role === "user");
         console.log(

@@ -7,6 +7,7 @@ type TimerRingProps = {
   agentSpeaking?: boolean;
   /** When the voice link dropped but we are still saving */
   isEnding?: boolean;
+  showStatusLabel?: boolean;
 };
 
 export function TimerRing({
@@ -15,6 +16,7 @@ export function TimerRing({
   isActive,
   agentSpeaking = false,
   isEnding = false,
+  showStatusLabel = true,
 }: TimerRingProps) {
   const progress = 1 - secondsLeft / totalSeconds;
   const circumference = 2 * Math.PI * 92;
@@ -79,17 +81,19 @@ export function TimerRing({
         <p className="text-[3.25rem] font-extralight tabular-nums tracking-tight text-stone-50">
           {mins}:{secs.toString().padStart(2, "0")}
         </p>
-        <p
-          className={`mt-2 text-[0.65rem] font-medium uppercase tracking-[0.28em] ${
-            isActive
-              ? agentSpeaking
-                ? "text-amber-400"
-                : "text-stone-500"
-              : "text-stone-600"
-          }`}
-        >
-          {statusLabel}
-        </p>
+        {showStatusLabel && (
+          <p
+            className={`mt-2 text-[0.65rem] font-medium uppercase tracking-[0.28em] ${
+              isActive
+                ? agentSpeaking
+                  ? "text-amber-400"
+                  : "text-stone-500"
+                : "text-stone-600"
+            }`}
+          >
+            {statusLabel}
+          </p>
+        )}
       </div>
     </div>
   );

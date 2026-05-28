@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useJournalUser } from "@/hooks/useJournalUser";
+import { ReadOnlyBanner, ShowcaseUserPicker } from "./ShowcaseUserPicker";
 import { ThreadMap, formatThreadDateRange } from "./ThreadMap";
 
 type Thread = {
@@ -45,7 +46,7 @@ const BRIGHT_LOAD_BAR = {
 };
 
 export function ThreadsView() {
-  const { userId, ready } = useJournalUser();
+  const { userId, ready, readOnly } = useJournalUser();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [brightThreads, setBrightThreads] = useState<Thread[]>([]);
   const [focusRecommendation, setFocusRecommendation] = useState<string | null>(null);
@@ -114,6 +115,8 @@ export function ThreadsView() {
 
   return (
     <div className="space-y-8">
+      {readOnly && <ShowcaseUserPicker />}
+      <ReadOnlyBanner />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-xl">
           <h1 className="font-serif text-2xl font-light tracking-tight text-stone-100 sm:text-3xl">
@@ -123,14 +126,16 @@ export function ThreadsView() {
             Worry threads and bright threads from your journal — what weighs on you and what lifts you.
           </p>
         </div>
-        <button
-          onClick={() => void generate()}
-          disabled={generating}
-          className="inline-flex items-center gap-2 rounded-full border border-stone-700 px-5 py-2.5 text-sm text-stone-300 transition-colors hover:border-stone-500 hover:text-stone-100 disabled:opacity-50"
-        >
-          <RefreshIcon spinning={generating} />
-          {generating ? "Analyzing…" : hasAnyThreads ? "Refresh map" : "Map my threads"}
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => void generate()}
+            disabled={generating}
+            className="inline-flex items-center gap-2 rounded-full border border-stone-700 px-5 py-2.5 text-sm text-stone-300 transition-colors hover:border-stone-500 hover:text-stone-100 disabled:opacity-50"
+          >
+            <RefreshIcon spinning={generating} />
+            {generating ? "Analyzing…" : hasAnyThreads ? "Refresh map" : "Map my threads"}
+          </button>
+        )}
       </div>
 
       {error && (

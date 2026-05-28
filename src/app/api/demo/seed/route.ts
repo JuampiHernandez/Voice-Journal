@@ -4,10 +4,13 @@ import { saveJournalEntry } from "@/lib/memory";
 import { getAppConfig } from "@/lib/config";
 import { analyzeTranscript } from "@/lib/analysis";
 import { withJournalUser } from "@/lib/auth/api-context";
+import { rejectIfReadOnly } from "@/lib/auth/read-only";
 
 export async function POST(request: NextRequest) {
+  const blocked = rejectIfReadOnly("Demo seed");
+  if (blocked) return blocked;
   const body = (await request.json()) as { userId?: string };
-  const ctx = await withJournalUser(request, body.userId);
+  const ctx = withJournalUser(request, body.userId);
   if (ctx instanceof NextResponse) return ctx;
   const { userId } = ctx;
 
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
   for (const sample of samples) {
     const date = format(new Date(Date.now() - sample.daysAgo * 86400000), "yyyy-MM-dd");
     const analysis = await analyzeTranscript(sample.transcript);
-    await saveJournalEntry({
+    saveJournalEntry({
       userId,
       entryDate: date,
       transcript: sample.transcript,

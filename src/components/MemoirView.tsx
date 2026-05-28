@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useJournalUser } from "@/hooks/useJournalUser";
+import { ReadOnlyBanner, ShowcaseUserPicker } from "./ShowcaseUserPicker";
 
 export function MemoirView() {
-  const { userId, ready } = useJournalUser();
+  const { userId, ready, readOnly } = useJournalUser();
   const [generating, setGenerating] = useState(false);
   const [memoir, setMemoir] = useState<{
     script: string;
@@ -73,6 +74,8 @@ export function MemoirView() {
 
   return (
     <div className="space-y-8">
+      {readOnly && <ShowcaseUserPicker />}
+      <ReadOnlyBanner />
       <div className="rounded-2xl border border-stone-800 bg-gradient-to-br from-stone-900/80 to-amber-950/20 p-8">
         <h2 className="text-2xl font-light text-stone-100">Your {year} Memoir</h2>
         <p className="mt-2 text-stone-400 max-w-lg">
@@ -81,13 +84,20 @@ export function MemoirView() {
         </p>
 
         {!memoir ? (
-          <button
-            onClick={generate}
-            disabled={generating}
-            className="mt-6 rounded-full bg-amber-500 px-6 py-2.5 text-sm font-medium text-stone-950 hover:bg-amber-400 disabled:opacity-50 transition-colors"
-          >
-            {generating ? "Generating memoir (this takes ~1 min)…" : "Generate my memoir"}
-          </button>
+          readOnly ? (
+            <p className="mt-6 text-sm text-stone-500">
+              No pre-generated memoir for this showcase journal. Generate one locally after forking
+              the repo.
+            </p>
+          ) : (
+            <button
+              onClick={generate}
+              disabled={generating}
+              className="mt-6 rounded-full bg-amber-500 px-6 py-2.5 text-sm font-medium text-stone-950 hover:bg-amber-400 disabled:opacity-50 transition-colors"
+            >
+              {generating ? "Generating memoir (this takes ~1 min)…" : "Generate my memoir"}
+            </button>
+          )
         ) : (
           <div className="mt-6 flex flex-wrap gap-3">
             <button
@@ -96,13 +106,15 @@ export function MemoirView() {
             >
               {playing ? "Pause" : "Play memoir"}
             </button>
-            <button
-              onClick={generate}
-              disabled={generating}
-              className="rounded-full border border-stone-600 px-6 py-2.5 text-sm text-stone-300 hover:bg-stone-800"
-            >
-              Regenerate
-            </button>
+            {!readOnly && (
+              <button
+                onClick={generate}
+                disabled={generating}
+                className="rounded-full border border-stone-600 px-6 py-2.5 text-sm text-stone-300 hover:bg-stone-800"
+              >
+                Regenerate
+              </button>
+            )}
           </div>
         )}
 

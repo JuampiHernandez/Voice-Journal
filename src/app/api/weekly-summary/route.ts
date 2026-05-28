@@ -8,9 +8,10 @@ import {
 import { generateWeeklySummary } from "@/lib/analysis";
 import { getAppConfig } from "@/lib/config";
 import { withJournalUser } from "@/lib/auth/api-context";
+import { isReadOnlyRuntime } from "@/lib/runtime";
 
 export async function GET(request: NextRequest) {
-  const ctx = await withJournalUser(
+  const ctx = withJournalUser(
     request,
     request.nextUrl.searchParams.get("userId")
   );
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const { userId } = ctx;
 
   const { start } = getCurrentWeekRange();
-  const existing = await getWeeklySummary(userId, start);
+  const existing = getWeeklySummary(userId, start);
 
   if (existing) {
     return NextResponse.json({
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { start: weekStart, end: weekEnd } = getCurrentWeekRange();
-  const entries = (await getRecentEntries(userId, 7))
+  const entries = (getRecentEntries(userId, 7))
     .filter((e) => e.entry_date >= weekStart && e.entry_date <= weekEnd)
     .map((e) => ({
       date: e.entry_date,
@@ -60,9 +61,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "OPENAI_API_KEY required" }, { status: 503 });
   }
 
+  if (isReadOnlyRuntime()) {
+    return NextResponse.json({
+      weekStart,
+      weekEnd,
+      summary: "Weekly recap is preloaded for showcase journals on the deployed demo.",
+      insights: [],
+      cached: false,
+    });
+  }
+
   try {
     const generated = await generateWeeklySummary(entries);
-    await saveWeeklySummary(userId, weekStart, weekEnd, generated.summary, generated.insights);
+    saveWeeklySummary(userId, weekStart, weekEnd, generated.summary, generated.insights);
 
     return NextResponse.json({
       weekStart,

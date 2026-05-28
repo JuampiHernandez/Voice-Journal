@@ -3,15 +3,18 @@ import { getEntryById, saveJournalEntry } from "@/lib/memory";
 import { analyzeTranscript } from "@/lib/analysis";
 import { fetchConversationUserTranscript } from "@/lib/elevenlabs-conversation";
 import { withJournalUser } from "@/lib/auth/api-context";
+import { rejectIfReadOnly } from "@/lib/auth/read-only";
 
 export async function POST(request: NextRequest) {
+  const blocked = rejectIfReadOnly("Check-in import");
+  if (blocked) return blocked;
   const body = (await request.json()) as {
     userId?: string;
     conversationId?: string;
     durationSeconds?: number;
   };
 
-  const ctx = await withJournalUser(request, body.userId);
+  const ctx = withJournalUser(request, body.userId);
   if (ctx instanceof NextResponse) return ctx;
   const { userId } = ctx;
 
@@ -37,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const analysis = await analyzeTranscript(fetched.transcript);
-    const entryId = await saveJournalEntry({
+    const entryId = saveJournalEntry({
       userId,
       transcript: fetched.transcript,
       summary: analysis.summary,
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
       openThread: analysis.openThread,
     });
 
-    const saved = await getEntryById(userId, entryId);
+    const saved = getEntryById(userId, entryId);
 
     return NextResponse.json({
       saved: true,

@@ -1,28 +1,28 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import fs from "node:fs";
+import path from "node:path";
 
-export const AUDIO_BUCKET = "journal-audio";
+const AUDIO_DIR = path.join(process.cwd(), "data", "audio");
 
-export async function uploadAudio(storagePath: string, data: Buffer): Promise<string> {
-  const supabase = createAdminClient();
-  const { error } = await supabase.storage.from(AUDIO_BUCKET).upload(storagePath, data, {
-    contentType: "audio/mpeg",
-    upsert: true,
-  });
-  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+function ensureAudioDir() {
+  fs.mkdirSync(AUDIO_DIR, { recursive: true });
+}
+
+function resolveAudioPath(storagePath: string): string {
+  return path.join(AUDIO_DIR, storagePath);
+}
+
+export function uploadAudio(storagePath: string, data: Buffer): string {
+  ensureAudioDir();
+  const fullPath = resolveAudioPath(storagePath);
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+  fs.writeFileSync(fullPath, data);
   return storagePath;
 }
 
-export async function getAudioSignedUrl(
-  storagePath: string,
-  expiresIn = 3600
-): Promise<string | null> {
-  if (!storagePath) return null;
-  const supabase = createAdminClient();
-  const { data, error } = await supabase.storage
-    .from(AUDIO_BUCKET)
-    .createSignedUrl(storagePath, expiresIn);
-  if (error || !data?.signedUrl) return null;
-  return data.signedUrl;
+export function readAudioFile(storagePath: string): Buffer | null {
+  const fullPath = resolveAudioPath(storagePath);
+  if (!fs.existsSync(fullPath)) return null;
+  return fs.readFileSync(fullPath);
 }
 
 export function weeklyAudioPath(userId: string, weekStart: string) {

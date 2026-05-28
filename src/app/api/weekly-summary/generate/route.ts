@@ -10,15 +10,18 @@ import { generateNarrationBuffer } from "@/lib/elevenlabs";
 import { getAppConfig } from "@/lib/config";
 import { withJournalUser } from "@/lib/auth/api-context";
 import { uploadAudio, weeklyAudioPath } from "@/lib/storage";
+import { rejectIfReadOnly } from "@/lib/auth/read-only";
 
 export async function POST(request: NextRequest) {
+  const blocked = rejectIfReadOnly("Weekly recap generation");
+  if (blocked) return blocked;
   const body = (await request.json().catch(() => ({}))) as {
     userId?: string;
     demo?: boolean;
     skipVoice?: boolean;
   };
 
-  const ctx = await withJournalUser(
+  const ctx = withJournalUser(
     request,
     body.userId ?? request.nextUrl.searchParams.get("userId")
   );
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "OPENAI_API_KEY required" }, { status: 503 });
   }
 
-  const rawEntries = await getEntriesForRecap(userId, demoMode);
+  const rawEntries = getEntriesForRecap(userId, demoMode);
   const entries = rawEntries
     .filter((e) => e.summary && e.summary !== "Processing your check-in…")
     .map((e) => ({
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const generated = await generateWeeklySummary(entries, { demoLabel: label });
-    await saveWeeklySummary(userId, weekStart, weekEnd, generated.summary, generated.insights, {
+    saveWeeklySummary(userId, weekStart, weekEnd, generated.summary, generated.insights, {
       supportNote: generated.supportNote,
     });
 
@@ -76,8 +79,8 @@ export async function POST(request: NextRequest) {
 
       const buffer = await generateNarrationBuffer(voiceScript);
       const storagePath = weeklyAudioPath(userId, weekStart);
-      await uploadAudio(storagePath, buffer);
-      await saveWeeklyVoice(userId, weekStart, voiceScript, storagePath);
+      uploadAudio(storagePath, buffer);
+      saveWeeklyVoice(userId, weekStart, voiceScript, storagePath);
       audioUrl = `/api/weekly-summary/audio?weekStart=${weekStart}`;
     }
 

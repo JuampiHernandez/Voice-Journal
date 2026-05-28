@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useJournalUser } from "@/hooks/useJournalUser";
+import { ReadOnlyBanner, ShowcaseUserPicker, LocalUserBanner } from "./ShowcaseUserPicker";
 import {
   EmotionalTimelineChart,
   formatEntryDate,
@@ -26,7 +27,7 @@ type DashboardData = {
 };
 
 export function DashboardView() {
-  const { userId, ready, mode } = useJournalUser();
+  const { userId, ready, readOnly } = useJournalUser();
   const [data, setData] = useState<DashboardData | null>(null);
   const [weekly, setWeekly] = useState<{
     summary: string;
@@ -40,6 +41,7 @@ export function DashboardView() {
   const [generatingRecap, setGeneratingRecap] = useState(false);
   const [recapError, setRecapError] = useState<string | null>(null);
   const [showAllEntries, setShowAllEntries] = useState(false);
+  const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(() => new Set());
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playingRecap, setPlayingRecap] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
@@ -169,23 +171,20 @@ export function DashboardView() {
     <div className="space-y-6">
       {loadError && (
         <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
-          {loadError}.{" "}
-          <a href="/login" className="text-amber-400 hover:underline">
-            Sign in
-          </a>{" "}
-          or ask your host to enable guest mode for local demos.
+          {loadError}
+          {!readOnly && (
+            <>
+              . Try adding <code className="text-amber-200/80">?user=YourName</code> to the URL.
+            </>
+          )}
         </p>
       )}
-      {mode === "guest" && (
-        <p className="rounded-xl border border-stone-800 bg-stone-900/50 px-4 py-3 text-xs text-stone-500">
-          Guest journal: <code className="text-amber-200/80">{userId}</code> — add{" "}
-          <code className="text-amber-200/80">?user=YourName</code> to the URL for your own data, or{" "}
-          <a href="/login" className="text-amber-400 hover:underline">
-            sign in
-          </a>{" "}
-          with a magic link.
-        </p>
+      {readOnly ? (
+        <ShowcaseUserPicker />
+      ) : (
+        <LocalUserBanner userId={userId} />
       )}
+      <ReadOnlyBanner />
       {/* Header + stats */}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div>
@@ -257,7 +256,7 @@ export function DashboardView() {
               </p>
             )}
 
-            {!hasEntries && (
+            {!hasEntries && !readOnly && (
               <button
                 onClick={seedDemo}
                 disabled={seeding}
@@ -278,14 +277,16 @@ export function DashboardView() {
                 {playingRecap ? "Pause" : "Play voice"}
               </button>
             )}
-            <button
-              onClick={() => void generateWeeklyRecap(true)}
-              disabled={generatingRecap || !hasEntries}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-4 py-2.5 text-sm font-medium text-stone-950 shadow-lg shadow-amber-500/15 transition-colors hover:bg-amber-400 disabled:opacity-50"
-            >
-              <SparkleIcon />
-              {generatingRecap ? "Generating…" : "Generate recap"}
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => void generateWeeklyRecap(true)}
+                disabled={generatingRecap || !hasEntries}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-amber-500 px-4 py-2.5 text-sm font-medium text-stone-950 shadow-lg shadow-amber-500/15 transition-colors hover:bg-amber-400 disabled:opacity-50"
+              >
+                <SparkleIcon />
+                {generatingRecap ? "Generating…" : "Generate recap"}
+              </button>
+            )}
 
             <div className="mt-auto pt-2">
               <RecapWaveform active={playingRecap} />
@@ -351,36 +352,70 @@ export function DashboardView() {
             <p className="text-sm text-stone-500">No entries yet. Start your first check-in.</p>
           ) : (
             <ul className="space-y-4">
-              {visibleEntries.map((entry) => (
-                <li key={entry.id} className="flex gap-3">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-800/80 text-stone-500">
-                    <MicIcon />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <time className="text-xs text-stone-500">{formatEntryDate(entry.date)}</time>
-                      {entry.mood != null && (
-                        <span className="shrink-0 text-xs tabular-nums text-amber-400/90">
-                          {entry.mood.toFixed(1)}/10
-                        </span>
+              {visibleEntries.map((entry) => {
+                const summary = entry.summary?.trim() ?? "";
+                const expanded = expandedEntryIds.has(entry.id);
+                const canExpand = summary.length > 72;
+
+                return (
+                  <li key={entry.id} className="flex gap-3">
+                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-800/80 text-stone-500">
+                      <MicIcon />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <time className="text-xs text-stone-500">
+                          {formatEntryDate(entry.date)}
+                        </time>
+                        {entry.mood != null && (
+                          <span className="shrink-0 text-xs tabular-nums text-amber-400/90">
+                            {entry.mood.toFixed(1)}/10
+                          </span>
+                        )}
+                      </div>
+                      {summary ? (
+                        <>
+                          <p
+                            className={`mt-1 text-sm text-stone-300 ${expanded ? "" : "line-clamp-1"}`}
+                          >
+                            {summary}
+                          </p>
+                          {canExpand && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedEntryIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(entry.id)) next.delete(entry.id);
+                                  else next.add(entry.id);
+                                  return next;
+                                })
+                              }
+                              className="mt-1 text-xs text-amber-400/80 hover:text-amber-300"
+                            >
+                              {expanded ? "Show less" : "Read more"}
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <p className="mt-1 text-sm text-stone-500">No summary yet.</p>
+                      )}
+                      {entry.themes.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {entry.themes.map((t, i) => (
+                            <span
+                              key={t}
+                              className={`rounded-full border px-2 py-0.5 text-[0.65rem] ${themeStyle(i)}`}
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <p className="mt-1 line-clamp-2 text-sm text-stone-300">{entry.summary}</p>
-                    {entry.themes.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {entry.themes.map((t, i) => (
-                          <span
-                            key={t}
-                            className={`rounded-full border px-2 py-0.5 text-[0.65rem] ${themeStyle(i)}`}
-                          >
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWeeklySummary, getCurrentWeekRange } from "@/lib/memory";
-import { getAudioSignedUrl } from "@/lib/storage";
+import { readAudioFile } from "@/lib/storage";
 import { withJournalUser } from "@/lib/auth/api-context";
 
 export async function GET(request: NextRequest) {
-  const ctx = await withJournalUser(
+  const ctx = withJournalUser(
     request,
     request.nextUrl.searchParams.get("userId")
   );
@@ -14,15 +14,20 @@ export async function GET(request: NextRequest) {
   const weekStart =
     request.nextUrl.searchParams.get("weekStart") ?? getCurrentWeekRange().start;
 
-  const summary = await getWeeklySummary(userId, weekStart);
+  const summary = getWeeklySummary(userId, weekStart);
   if (!summary?.audio_path) {
     return NextResponse.json({ error: "Weekly voice recap not found" }, { status: 404 });
   }
 
-  const signedUrl = await getAudioSignedUrl(summary.audio_path);
-  if (!signedUrl) {
+  const buffer = readAudioFile(summary.audio_path);
+  if (!buffer) {
     return NextResponse.json({ error: "Audio file not found" }, { status: 404 });
   }
 
-  return NextResponse.redirect(signedUrl);
+  return new NextResponse(new Uint8Array(buffer), {
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Cache-Control": "private, max-age=3600",
+    },
+  });
 }
