@@ -400,11 +400,14 @@ export function VoiceJournalSession() {
       if (!res.ok) {
         throw new Error(data.error ?? data.hint ?? "Failed to get conversation token");
       }
-      log("token received");
+      if (!data.signedUrl) {
+        throw new Error("Failed to get signed conversation URL");
+      }
+      log("signed URL received");
 
       const conversation = await Conversation.startSession({
-        conversationToken: data.token,
-        connectionType: "webrtc",
+        signedUrl: data.signedUrl,
+        connectionType: "websocket",
         overrides: {
           agent: {
             firstMessage:

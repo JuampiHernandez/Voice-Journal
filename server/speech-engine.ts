@@ -277,6 +277,8 @@ async function main() {
             `[SpeechEngine] transcript update (${transcript.length} messages):`,
             transcript.map((m) => `${m.role}: ${m.content.slice(0, 60)}`).join(" | ")
           );
+
+          await checkpointTranscript(meta, session.conversationId);
         }
 
         const response = await openai.responses.create(
@@ -293,12 +295,6 @@ async function main() {
         );
 
         await session.sendResponse(response);
-
-        if (meta) {
-          void checkpointTranscript(meta, session.conversationId).catch((e) =>
-            console.error("[SpeechEngine] checkpoint failed:", e)
-          );
-        }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
           return;
