@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Nav } from "@/components/Nav";
+import { LocalJournalRecovery } from "@/components/LocalJournalRecovery";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,6 +31,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-stone-950 text-stone-200">
+        <LocalJournalRecovery />
         <Nav />
         <main className="flex-1">{children}</main>
         <footer className="py-5 text-center text-[0.65rem] text-stone-700">

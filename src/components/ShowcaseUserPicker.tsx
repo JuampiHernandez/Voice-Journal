@@ -86,9 +86,9 @@ export function LocalUserBanner({ userId }: { userId: string }) {
         </span>
       )}
       {" — "}
-      entries are stored under this id. Use{" "}
-      <code className="text-amber-200/80">?user=YourName</code> in the URL to pick a stable name
-      going forward.
+      entries are stored under this id. Optional: use{" "}
+      <code className="text-amber-200/80">?user=YourName</code> for a readable name or a second
+      journal on this machine.
     </p>
   );
 }

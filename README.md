@@ -27,10 +27,10 @@ npm run setup:speech-engine
 
 # Every day:
 npm run dev:full
-# → http://localhost:3001/journal?user=YourName
+# → http://localhost:3001/journal
 ```
 
-Use `?user=YourName` so each person on the same machine gets a separate journal (stored in this browser’s `localStorage`). The database file `data/voice-journal.db` is gitignored — forks start empty.
+Each browser gets its own journal id automatically (stored in `localStorage`). Optional: add `?user=YourName` for a readable name or a second journal on the same machine. The database file `data/voice-journal.db` is gitignored — forks start empty.
 
 **Optional:** copy an existing Supabase project once with `npm run migrate:supabase` (see [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)).
 

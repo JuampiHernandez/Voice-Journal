@@ -29,7 +29,7 @@ OPENAI_API_KEY=your_openai_key`,
     code: `npm run dev:full
 
 # Open:
-http://localhost:3001/journal?user=YourName`,
+http://localhost:3001/journal`,
   },
 ] as const;
 

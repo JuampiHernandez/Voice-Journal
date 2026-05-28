@@ -19,7 +19,7 @@ npm run setup:speech-engine`;
 const dailyRunCommands = `npm run dev:full
 
 # Open:
-http://localhost:3001/journal?user=YourName`;
+http://localhost:3001/journal`;
 
 type LocalSetupGuideProps = {
   compact?: boolean;
@@ -77,7 +77,7 @@ export function LocalSetupGuide({ compact = false, source = "home" }: LocalSetup
           number="4"
           title="Every time after that"
           code={dailyRunCommands}
-          helper="dev:full starts ngrok, the Speech Engine, syncs ElevenLabs, and starts Next.js on port 3001. Use ?user=YourName so each person gets their own local journal."
+          helper="dev:full starts ngrok, the Speech Engine, syncs ElevenLabs, and starts Next.js on port 3001. Each browser gets its own journal id automatically. Optional: ?user=YourName for a readable name or a second journal on the same machine."
         />
       </div>
     </section>

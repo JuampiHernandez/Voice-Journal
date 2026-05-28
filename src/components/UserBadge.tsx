@@ -30,7 +30,7 @@ export function UserBadge({ compact = false }: { compact?: boolean }) {
         title={
           readOnly
             ? `Viewing ${showcase?.label ?? userId} (demo)`
-            : `Journal user: ${userId}. Add ?user=YourName to switch.`
+            : `Journal user: ${userId}. Optional ?user=YourName to switch.`
         }
       >
         {readOnly ? `Viewing: ${label}` : label}
@@ -40,7 +40,7 @@ export function UserBadge({ compact = false }: { compact?: boolean }) {
 
   return (
     <p className="text-sm text-stone-500">
-      Journal user: <code className="text-amber-200/80">{userId}</code> — use{" "}
+      Journal user: <code className="text-amber-200/80">{userId}</code> — optional{" "}
       <code className="text-amber-200/80">?user=YourName</code> in the URL to switch.
     </p>
   );

@@ -66,8 +66,10 @@ npm run dev:full
 Open in the browser:
 
 ```text
-http://localhost:3001/journal?user=YourName
+http://localhost:3001/journal
 ```
+
+Each browser gets its own journal id automatically. Optional: `?user=YourName` for a readable name or a second journal on the same machine.
 
 Other useful commands:
 
