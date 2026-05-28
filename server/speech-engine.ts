@@ -17,22 +17,6 @@ const SPEECH_ENGINE_ID = process.env.SPEECH_ENGINE_ID;
 const PORT = Number(process.env.PORT ?? process.env.SPEECH_ENGINE_PORT ?? 3002);
 const HOST = process.env.SPEECH_ENGINE_HOST ?? "0.0.0.0";
 
-if (!process.env.ELEVENLABS_API_KEY) {
-  console.error("Missing ELEVENLABS_API_KEY");
-  process.exit(1);
-}
-if (!process.env.OPENAI_API_KEY) {
-  console.error("Missing OPENAI_API_KEY");
-  process.exit(1);
-}
-if (!SPEECH_ENGINE_ID) {
-  console.error("Missing SPEECH_ENGINE_ID — run: npm run setup:speech-engine");
-  process.exit(1);
-}
-
-const elevenlabs = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 type TranscriptMessage = { role: string; content: string };
 
 type SessionMeta = {
@@ -157,6 +141,37 @@ const httpServer = createServer((req, res) => {
 });
 
 async function main() {
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`Voice Journal Speech Engine listening on http://${HOST}:${PORT}`);
+    console.log(`WebSocket: ws://${HOST}:${PORT}/ws`);
+    console.log(`Speech Engine ID: ${SPEECH_ENGINE_ID ?? "not configured"}`);
+    const publicWs = resolveSpeechEngineWsUrl();
+    if (publicWs) {
+      console.log(`Public WebSocket: ${publicWs}`);
+    } else if (process.env.RAILWAY_ENVIRONMENT) {
+      console.warn(
+        "Railway: generate a public domain in Settings → Networking, then restart (or set SPEECH_ENGINE_WS_URL)"
+      );
+    }
+    console.log(`Journal DB: Supabase (${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "not configured"})`);
+  });
+
+  const missing = [
+    !process.env.ELEVENLABS_API_KEY && "ELEVENLABS_API_KEY",
+    !process.env.OPENAI_API_KEY && "OPENAI_API_KEY",
+    !SPEECH_ENGINE_ID && "SPEECH_ENGINE_ID",
+  ].filter(Boolean);
+
+  if (missing.length > 0) {
+    console.warn(
+      `Speech Engine not attached yet. Missing: ${missing.join(", ")}. /health will still pass for Railway setup.`
+    );
+    return;
+  }
+
+  const elevenlabs = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY! });
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
   const sync = await syncSpeechEngineWsUrl();
   const convConfig = await syncSpeechEngineConversationConfig();
   if (convConfig.updated) {
@@ -243,21 +258,6 @@ async function main() {
     onError(err) {
       console.error("Speech Engine error:", err);
     },
-  });
-
-  httpServer.listen(PORT, HOST, () => {
-    console.log(`Voice Journal Speech Engine listening on http://${HOST}:${PORT}`);
-    console.log(`WebSocket: ws://${HOST}:${PORT}/ws`);
-    console.log(`Speech Engine ID: ${SPEECH_ENGINE_ID}`);
-    const publicWs = resolveSpeechEngineWsUrl();
-    if (publicWs) {
-      console.log(`Public WebSocket: ${publicWs}`);
-    } else if (process.env.RAILWAY_ENVIRONMENT) {
-      console.warn(
-        "Railway: generate a public domain in Settings → Networking, then restart (or set SPEECH_ENGINE_WS_URL)"
-      );
-    }
-    console.log(`Journal DB: Supabase (${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "not configured"})`);
   });
 }
 
