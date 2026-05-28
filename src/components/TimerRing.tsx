@@ -5,6 +5,8 @@ type TimerRingProps = {
   totalSeconds: number;
   isActive: boolean;
   agentSpeaking?: boolean;
+  /** When the voice link dropped but we are still saving */
+  isEnding?: boolean;
 };
 
 export function TimerRing({
@@ -12,6 +14,7 @@ export function TimerRing({
   totalSeconds,
   isActive,
   agentSpeaking = false,
+  isEnding = false,
 }: TimerRingProps) {
   const progress = 1 - secondsLeft / totalSeconds;
   const circumference = 2 * Math.PI * 92;
@@ -21,11 +24,13 @@ export function TimerRing({
   const urgent = secondsLeft <= 30;
   const ringColor = urgent ? "#fb7185" : "#f59e0b";
 
-  const statusLabel = !isActive
-    ? "ready"
-    : agentSpeaking
-      ? "speaking"
-      : "listening";
+  const statusLabel = isEnding
+    ? "saving"
+    : !isActive
+      ? "ready"
+      : agentSpeaking
+        ? "speaking"
+        : "listening";
 
   return (
     <div className="relative flex h-[17rem] w-[17rem] items-center justify-center">

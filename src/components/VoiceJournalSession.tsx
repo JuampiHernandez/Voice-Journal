@@ -10,6 +10,9 @@ import { authConfigured, useJournalUser } from "@/hooks/useJournalUser";
 
 const SESSION_SECONDS = 180;
 const MIN_SESSION_MS = 8000; // don't treat disconnect as "done" before this unless we heard speech
+const FINALIZE_TIMEOUT_MS = 45_000;
+const SERVER_POLL_ATTEMPTS = 12;
+const IMPORT_RETRY_ATTEMPTS = 10;
 
 type SessionStatus = "idle" | "connecting" | "active" | "ending" | "done" | "error";
 
@@ -34,6 +37,7 @@ export function VoiceJournalSession() {
   const [showDebug, setShowDebug] = useState(false);
   const [ngrokWarning, setNgrokWarning] = useState<string | null>(null);
   const [interruptionCount, setInterruptionCount] = useState(0);
+  const [connectionLost, setConnectionLost] = useState(false);
 
   useEffect(() => {
     if (window.location.search.includes("debug")) setShowDebug(true);
@@ -49,6 +53,7 @@ export function VoiceJournalSession() {
   const isEndingRef = useRef(false);
   const hadActivityRef = useRef(false);
   const userEndedRef = useRef(false);
+  const connectionLostRef = useRef(false);
 
   const log = useCallback((msg: string) => {
     console.log(`[VoiceJournal] ${msg}`);
@@ -86,33 +91,36 @@ export function VoiceJournalSession() {
       .catch(() => setSetupError("Could not verify Speech Engine configuration."));
   }, [log]);
 
-  const waitForServerSave = useCallback(async () => {
-    const conversationId = conversationIdRef.current;
-    if (!conversationId) {
-      log("poll: no conversationId");
+  const waitForServerSave = useCallback(
+    async (maxAttempts = SERVER_POLL_ATTEMPTS, delayMs = 1000) => {
+      const conversationId = conversationIdRef.current;
+      if (!conversationId) {
+        log("poll: no conversationId");
+        return null;
+      }
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+
+        const res = await fetch(
+          `/api/check-in/status?userId=${encodeURIComponent(userId)}&conversationId=${encodeURIComponent(conversationId)}`,
+          { credentials: "include" }
+        );
+        const data = (await res.json()) as { saved?: boolean; summary?: string | null };
+
+        log(`poll #${attempt + 1}: saved=${data.saved}`);
+
+        if (data.saved) {
+          return data.summary ?? "Entry saved.";
+        }
+      }
+
       return null;
-    }
-
-    for (let attempt = 0; attempt < 20; attempt++) {
-      if (attempt > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      const res = await fetch(
-        `/api/check-in/status?userId=${encodeURIComponent(userId)}&conversationId=${encodeURIComponent(conversationId)}`,
-        { credentials: "include" }
-      );
-      const data = (await res.json()) as { saved?: boolean; summary?: string | null };
-
-      log(`poll #${attempt + 1}: saved=${data.saved}`);
-
-      if (data.saved) {
-        return data.summary ?? "Entry saved.";
-      }
-    }
-
-    return null;
-  }, [log, userId]);
+    },
+    [log, userId]
+  );
 
   const saveClientCheckIn = useCallback(async () => {
     const transcript = userTranscriptRef.current.join("\n").trim();
@@ -181,8 +189,33 @@ export function VoiceJournalSession() {
     return data.summary ?? "Entry saved from ElevenLabs.";
   }, [log, userId]);
 
+  const tryRecoverTranscript = useCallback(
+    async (deadlineMs: number): Promise<string | null> => {
+      let attempts = 0;
+      while (Date.now() < deadlineMs && attempts < IMPORT_RETRY_ATTEMPTS) {
+        attempts += 1;
+        const imported = await importFromElevenLabs();
+        if (imported) return imported;
+
+        const polled = await waitForServerSave(3, 800);
+        if (polled && polled !== "Processing your check-in…") return polled;
+
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      return null;
+    },
+    [importFromElevenLabs, waitForServerSave]
+  );
+
+  const finishWithSummary = useCallback((summary: string) => {
+    setSaveStatus(summary);
+    setError(null);
+    setConnectionLost(false);
+    setStatus("done");
+  }, []);
+
   const finalizeSession = useCallback(
-    async (options?: { endConversation?: boolean }) => {
+    async (options?: { endConversation?: boolean; connectionDropped?: boolean }) => {
       if (isEndingRef.current) return;
       isEndingRef.current = true;
       userEndedRef.current = true;
@@ -193,6 +226,8 @@ export function VoiceJournalSession() {
       }
 
       setStatus("ending");
+      const finalizeStarted = Date.now();
+      const deadline = finalizeStarted + FINALIZE_TIMEOUT_MS;
       const elapsed = Date.now() - sessionStartedAtRef.current;
       log(
         `finalize: elapsed=${elapsed}ms, activity=${hadActivityRef.current}, clientLines=${userTranscriptRef.current.length}, conv=${conversationIdRef.current}`
@@ -208,75 +243,64 @@ export function VoiceJournalSession() {
         conversationRef.current = null;
       }
 
-      const serverSummary = await waitForServerSave();
+      const serverSummary = await waitForServerSave(5, 600);
       if (serverSummary && serverSummary !== "Processing your check-in…") {
-        setSaveStatus(serverSummary);
-        setError(null);
-        setStatus("done");
+        finishWithSummary(serverSummary);
         return;
       }
 
       const hasClientTranscript = userTranscriptRef.current.join("\n").trim().length > 0;
 
       if (!hasClientTranscript) {
-        for (let attempt = 0; attempt < 8; attempt++) {
-          if (attempt > 0) {
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-          }
-          const importedSummary = await importFromElevenLabs();
-          if (importedSummary) {
-            setSaveStatus(importedSummary);
-            setError(null);
-            setStatus("done");
-            return;
-          }
-          const polled = await waitForServerSave();
-          if (polled && polled !== "Processing your check-in…") {
-            setSaveStatus(polled);
-            setError(null);
-            setStatus("done");
-            return;
-          }
+        const recovered = await tryRecoverTranscript(deadline);
+        if (recovered) {
+          finishWithSummary(recovered);
+          return;
         }
       }
 
       const clientSummary = await saveClientCheckIn();
       if (clientSummary) {
-        setSaveStatus(clientSummary);
-        setError(null);
-        setStatus("done");
+        finishWithSummary(clientSummary);
         return;
       }
 
-      const importedSummary = await importFromElevenLabs();
-      if (importedSummary) {
-        setSaveStatus(importedSummary);
-        setError(null);
-        setStatus("done");
-        return;
+      if (hasClientTranscript) {
+        const recovered = await tryRecoverTranscript(deadline);
+        if (recovered) {
+          finishWithSummary(recovered);
+          return;
+        }
       }
 
-      const lateServerSummary = await waitForServerSave();
+      const lateServerSummary = await waitForServerSave(
+        Math.max(2, Math.floor((deadline - Date.now()) / 1000)),
+        1000
+      );
       if (lateServerSummary && lateServerSummary !== "Processing your check-in…") {
-        setSaveStatus(lateServerSummary);
-        setError(null);
-        setStatus("done");
+        finishWithSummary(lateServerSummary);
         return;
       }
 
       setSaveStatus(null);
       const lines = userTranscriptRef.current.length;
       const secs = Math.round(elapsed / 1000);
+      const dropped = options?.connectionDropped ?? connectionLostRef.current;
+      const reason = dropped
+        ? "The voice connection dropped before your check-in could be saved."
+        : "No speech was captured.";
       setError(
-        `No speech was captured (${secs}s, ${lines} client lines). ` +
-          `Speech Engine unreachable — check Railway /health or run npm run dev:voice locally`
+        `${reason} (${secs}s, ${lines} client lines). ` +
+          `Tap Start to try again. If this keeps happening, check Speech Engine on Railway (/health) or your network.`
       );
+      connectionLostRef.current = false;
+      setConnectionLost(false);
       setStatus("error");
       setShowDebug(true);
       isEndingRef.current = false;
       userEndedRef.current = false;
     },
-    [importFromElevenLabs, log, saveClientCheckIn, userId, waitForServerSave]
+    [finishWithSummary, log, saveClientCheckIn, tryRecoverTranscript, waitForServerSave]
   );
 
   const handleUnexpectedDisconnect = useCallback(
@@ -294,19 +318,24 @@ export function VoiceJournalSession() {
       }
       conversationRef.current = null;
 
+      connectionLostRef.current = true;
+      setConnectionLost(true);
+
       // Connection dropped before any real conversation — let user retry, don't "save"
       if (!hadActivityRef.current && elapsed < MIN_SESSION_MS) {
         setError(
-          `Voice connection dropped after ${Math.round(elapsed / 1000)}s (WebRTC closed). ` +
-            `Wait for the agent greeting, then speak. Click Start to retry.`
+          `Voice connection dropped after ${Math.round(elapsed / 1000)}s (${details.reason}). ` +
+            `Wait for the agent greeting, then speak. Tap Start to retry.`
         );
+        connectionLostRef.current = false;
+        setConnectionLost(false);
         setStatus("error");
         setShowDebug(true);
         isEndingRef.current = false;
         return;
       }
 
-      void finalizeSession({ endConversation: false });
+      void finalizeSession({ endConversation: false, connectionDropped: true });
     },
     [finalizeSession, log]
   );
@@ -316,6 +345,8 @@ export function VoiceJournalSession() {
 
     setError(null);
     setSaveStatus(null);
+    connectionLostRef.current = false;
+    setConnectionLost(false);
     setStatus("connecting");
     setSecondsLeft(SESSION_SECONDS);
     setAgentText("");
@@ -374,6 +405,16 @@ export function VoiceJournalSession() {
         onStatusChange: ({ status: s }) => {
           setConnectionStatus(s);
           log(`status: ${s}`);
+          if (
+            s === "disconnected" &&
+            !isEndingRef.current &&
+            !userEndedRef.current &&
+            sessionStartedAtRef.current > 0 &&
+            conversationIdRef.current
+          ) {
+            log("status disconnected while session active — recovering");
+            handleUnexpectedDisconnect({ reason: "error" });
+          }
         },
         onModeChange: ({ mode: m }) => {
           setMode(m);
@@ -458,6 +499,7 @@ export function VoiceJournalSession() {
           secondsLeft={secondsLeft}
           totalSeconds={SESSION_SECONDS}
           isActive={status === "active"}
+          isEnding={status === "ending"}
           agentSpeaking={agentSpeaking}
         />
 
@@ -524,9 +566,16 @@ export function VoiceJournalSession() {
             </button>
           </>
         ) : status === "ending" ? (
-          <div className="flex items-center gap-2 text-sm text-stone-500">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-            Saving…
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <div className="flex items-center gap-2 text-sm text-stone-500">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+              {connectionLost ? "Connection lost — saving…" : "Saving…"}
+            </div>
+            {connectionLost && (
+              <p className="max-w-xs text-[0.7rem] leading-relaxed text-stone-600">
+                The voice link dropped. We are pulling your transcript from the server.
+              </p>
+            )}
           </div>
         ) : (
           <div className="flex items-center gap-2 text-sm text-stone-500">

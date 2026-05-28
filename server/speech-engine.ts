@@ -207,43 +207,57 @@ async function main() {
     },
 
     async onTranscript(transcript, signal, session) {
-      const meta = getSessionMeta(session);
-      const userId = meta?.userId ?? "demo-user";
-      await ensureUser(userId);
+      try {
+        const meta = getSessionMeta(session);
+        const userId = meta?.userId ?? "demo-user";
+        await ensureUser(userId);
 
-      const userLines = transcript.filter((m) => m.role === "user");
-      console.log(
-        `[SpeechEngine] transcript event_id=${session.conversationId} total=${transcript.length} user=${userLines.length}`,
-        userLines.map((m) => m.content.slice(0, 60)).join(" | ") || "(no user speech yet)"
-      );
-
-      const instructions = await buildAgentInstructions(userId);
-
-      if (meta) {
-        meta.transcript = transcript.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
+        const userLines = transcript.filter((m) => m.role === "user");
         console.log(
-          `[SpeechEngine] transcript update (${transcript.length} messages):`,
-          transcript.map((m) => `${m.role}: ${m.content.slice(0, 60)}`).join(" | ")
+          `[SpeechEngine] transcript event_id=${session.conversationId} total=${transcript.length} user=${userLines.length}`,
+          userLines.map((m) => m.content.slice(0, 60)).join(" | ") || "(no user speech yet)"
         );
-      }
 
-      const response = await openai.responses.create(
-        {
-          model: "gpt-4o-mini",
-          instructions,
-          input: transcript.map((m) => ({
-            role: m.role === "agent" ? "assistant" : m.role,
+        const instructions = await buildAgentInstructions(userId);
+
+        if (meta) {
+          meta.transcript = transcript.map((m) => ({
+            role: m.role,
             content: m.content,
-          })),
-          stream: true,
-        },
-        { signal }
-      );
+          }));
+          console.log(
+            `[SpeechEngine] transcript update (${transcript.length} messages):`,
+            transcript.map((m) => `${m.role}: ${m.content.slice(0, 60)}`).join(" | ")
+          );
+        }
 
-      session.sendResponse(response);
+        const response = await openai.responses.create(
+          {
+            model: "gpt-4o-mini",
+            instructions,
+            input: transcript.map((m) => ({
+              role: m.role === "agent" ? "assistant" : m.role,
+              content: m.content,
+            })),
+            stream: true,
+          },
+          { signal }
+        );
+
+        session.sendResponse(response);
+      } catch (err) {
+        console.error(
+          `[SpeechEngine] onTranscript failed (${session.conversationId}):`,
+          err
+        );
+        try {
+          await session.sendResponse(
+            "I'm having a brief technical hiccup — go ahead, I'm still listening."
+          );
+        } catch {
+          /* session may already be closed */
+        }
+      }
     },
 
     async onClose(session) {
