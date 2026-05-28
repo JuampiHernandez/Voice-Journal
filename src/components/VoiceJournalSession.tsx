@@ -303,13 +303,13 @@ export function VoiceJournalSession() {
     [finishWithSummary, log, saveClientCheckIn, tryRecoverTranscript, waitForServerSave]
   );
 
-  const handleUnexpectedDisconnect = useCallback(
-    (details: DisconnectionDetails) => {
+  const recoverFromDisconnect = useCallback(
+    (reason: string) => {
       if (isEndingRef.current || userEndedRef.current) return;
 
       const elapsed = Date.now() - sessionStartedAtRef.current;
       log(
-        `disconnect: reason=${details.reason}, elapsed=${elapsed}ms, activity=${hadActivityRef.current}, clientLines=${userTranscriptRef.current.length}`
+        `disconnect: reason=${reason}, elapsed=${elapsed}ms, activity=${hadActivityRef.current}, clientLines=${userTranscriptRef.current.length}`
       );
 
       if (timerRef.current) {
@@ -324,7 +324,7 @@ export function VoiceJournalSession() {
       // Connection dropped before any real conversation — let user retry, don't "save"
       if (!hadActivityRef.current && elapsed < MIN_SESSION_MS) {
         setError(
-          `Voice connection dropped after ${Math.round(elapsed / 1000)}s (${details.reason}). ` +
+          `Voice connection dropped after ${Math.round(elapsed / 1000)}s (${reason}). ` +
             `Wait for the agent greeting, then speak. Tap Start to retry.`
         );
         connectionLostRef.current = false;
@@ -338,6 +338,13 @@ export function VoiceJournalSession() {
       void finalizeSession({ endConversation: false, connectionDropped: true });
     },
     [finalizeSession, log]
+  );
+
+  const handleUnexpectedDisconnect = useCallback(
+    (details: DisconnectionDetails) => {
+      recoverFromDisconnect(details.reason);
+    },
+    [recoverFromDisconnect]
   );
 
   const startSession = useCallback(async () => {
@@ -413,7 +420,7 @@ export function VoiceJournalSession() {
             conversationIdRef.current
           ) {
             log("status disconnected while session active — recovering");
-            handleUnexpectedDisconnect({ reason: "error" });
+            recoverFromDisconnect("disconnected");
           }
         },
         onModeChange: ({ mode: m }) => {
@@ -466,7 +473,7 @@ export function VoiceJournalSession() {
       setStatus("error");
       setShowDebug(true);
     }
-  }, [finalizeSession, handleUnexpectedDisconnect, log, ready, setupError, userId]);
+  }, [finalizeSession, handleUnexpectedDisconnect, log, ready, recoverFromDisconnect, setupError, userId]);
 
   // Only end session on page unload — NOT on React strict-mode remount
   useEffect(() => {
