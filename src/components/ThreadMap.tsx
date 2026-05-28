@@ -10,10 +10,16 @@ export type ThreadMapItem = {
   focusPriority: number;
 };
 
-const TREND_ORB = {
+const WORRY_TREND_ORB = {
   rising: { fill: "#f97316", glow: "rgba(249,115,22,0.35)", ring: "rgba(251,146,60,0.4)" },
   stable: { fill: "#a8a29e", glow: "rgba(168,162,158,0.2)", ring: "rgba(214,211,209,0.25)" },
   fading: { fill: "#34d399", glow: "rgba(52,211,153,0.25)", ring: "rgba(110,231,183,0.3)" },
+};
+
+const BRIGHT_TREND_ORB = {
+  rising: { fill: "#34d399", glow: "rgba(52,211,153,0.35)", ring: "rgba(110,231,183,0.4)" },
+  stable: { fill: "#a8a29e", glow: "rgba(168,162,158,0.2)", ring: "rgba(214,211,209,0.25)" },
+  fading: { fill: "#fbbf24", glow: "rgba(251,191,36,0.25)", ring: "rgba(252,211,77,0.3)" },
 };
 
 function orbPositions(count: number): { x: number; y: number }[] {
@@ -75,9 +81,18 @@ type ThreadMapProps = {
   threads: ThreadMapItem[];
   activeId?: string | null;
   onSelect?: (id: string) => void;
+  variant?: "worry" | "bright";
+  intensityLabel?: string;
 };
 
-export function ThreadMap({ threads, activeId, onSelect }: ThreadMapProps) {
+export function ThreadMap({
+  threads,
+  activeId,
+  onSelect,
+  variant = "worry",
+  intensityLabel = "Mental load",
+}: ThreadMapProps) {
+  const trendOrb = variant === "bright" ? BRIGHT_TREND_ORB : WORRY_TREND_ORB;
   const sorted = [...threads].sort((a, b) => a.focusPriority - b.focusPriority);
   const positions = orbPositions(sorted.length);
 
@@ -96,11 +111,15 @@ export function ThreadMap({ threads, activeId, onSelect }: ThreadMapProps) {
         preserveAspectRatio="xMidYMid meet"
         className="mx-auto block h-[clamp(250px,32vh,340px)] w-full"
         role="img"
-        aria-label="Visual map of worry threads"
+        aria-label={
+          variant === "bright"
+            ? "Visual map of bright threads"
+            : "Visual map of worry threads"
+        }
       >
         <defs>
           {sorted.map((thread) => {
-            const colors = TREND_ORB[thread.trend];
+            const colors = trendOrb[thread.trend];
             return (
               <radialGradient key={`grad-${thread.id}`} id={`orb-${thread.id}`}>
                 <stop offset="0%" stopColor={colors.fill} stopOpacity="0.95" />
@@ -157,7 +176,7 @@ export function ThreadMap({ threads, activeId, onSelect }: ThreadMapProps) {
           const pos = positions[i];
           if (!pos) return null;
           const r = orbRadius(thread.intensity);
-          const colors = TREND_ORB[thread.trend];
+          const colors = trendOrb[thread.trend];
           const active = activeId === thread.id;
           const [line1, line2] = splitTitle(thread.title);
           const labelY = pos.y + r + 18;
@@ -168,7 +187,7 @@ export function ThreadMap({ threads, activeId, onSelect }: ThreadMapProps) {
               className={onSelect ? "cursor-pointer" : undefined}
               onClick={() => onSelect?.(thread.id)}
               role={onSelect ? "button" : undefined}
-              aria-label={`${thread.title}, ${thread.intensity.toFixed(1)} out of 10, ${thread.trend}`}
+              aria-label={`${thread.title}, ${thread.intensity.toFixed(1)} out of 10 ${intensityLabel.toLowerCase()}, ${thread.trend}`}
               aria-pressed={active}
             >
               {active && (

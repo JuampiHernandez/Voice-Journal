@@ -31,23 +31,26 @@ async function streamToBuffer(stream: ReadableStream<Uint8Array> | Readable): Pr
   return Buffer.concat(chunks);
 }
 
-export async function generateNarration(text: string, outputPath: string): Promise<string> {
+export async function generateNarrationBuffer(text: string): Promise<Buffer> {
   const elevenlabs = getElevenLabs();
   const audio = await elevenlabs.textToSpeech.convert(NARRATOR_VOICE, {
     text,
     modelId: "eleven_multilingual_v2",
     outputFormat: "mp3_44100_128",
   });
+  return streamToBuffer(audio);
+}
 
+/** Local dev fallback — writes to disk */
+export async function generateNarration(text: string, outputPath: string): Promise<string> {
+  const buffer = await generateNarrationBuffer(text);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  const buffer = await streamToBuffer(audio);
   fs.writeFileSync(outputPath, buffer);
   return outputPath;
 }
 
-export async function generateMemoirMusic(outputPath: string, mood = "reflective"): Promise<string> {
+export async function generateMemoirMusicBuffer(mood = "reflective"): Promise<Buffer> {
   const elevenlabs = getElevenLabs();
-
   const prompt =
     mood === "reflective"
       ? "Gentle ambient piano and soft strings, warm and introspective, slow tempo, cinematic documentary score, no vocals, emotional but hopeful"
@@ -59,9 +62,12 @@ export async function generateMemoirMusic(outputPath: string, mood = "reflective
     modelId: "music_v1",
     forceInstrumental: true,
   });
+  return streamToBuffer(audio);
+}
 
+export async function generateMemoirMusic(outputPath: string, mood = "reflective"): Promise<string> {
+  const buffer = await generateMemoirMusicBuffer(mood);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  const buffer = await streamToBuffer(audio);
   fs.writeFileSync(outputPath, buffer);
   return outputPath;
 }

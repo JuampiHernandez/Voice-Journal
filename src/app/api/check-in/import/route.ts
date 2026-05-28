@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureUser, getEntryById, saveJournalEntry } from "@/lib/memory";
+import { getEntryById, saveJournalEntry } from "@/lib/memory";
 import { analyzeTranscript } from "@/lib/analysis";
 import { fetchConversationUserTranscript } from "@/lib/elevenlabs-conversation";
+import { withJournalUser } from "@/lib/auth/api-context";
 
-/** Import user transcript from ElevenLabs conversation API (fallback when Speech Engine WS fails) */
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
     userId?: string;
@@ -11,7 +11,10 @@ export async function POST(request: NextRequest) {
     durationSeconds?: number;
   };
 
-  const userId = body.userId ?? "demo-user";
+  const ctx = await withJournalUser(request, body.userId);
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
+
   const conversationId = body.conversationId?.trim();
 
   if (!conversationId) {
@@ -30,12 +33,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  ensureUser(userId);
   const durationSeconds = body.durationSeconds ?? 180;
 
   try {
     const analysis = await analyzeTranscript(fetched.transcript);
-    const entryId = saveJournalEntry({
+    const entryId = await saveJournalEntry({
       userId,
       transcript: fetched.transcript,
       summary: analysis.summary,
@@ -47,7 +49,7 @@ export async function POST(request: NextRequest) {
       openThread: analysis.openThread,
     });
 
-    const saved = getEntryById(userId, entryId);
+    const saved = await getEntryById(userId, entryId);
 
     return NextResponse.json({
       saved: true,

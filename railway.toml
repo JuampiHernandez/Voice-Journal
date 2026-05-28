@@ -1,0 +1,12 @@
+# Voice Journal — Speech Engine service (deploy separately from Vercel Next.js app)
+# Dashboard: New Project → Deploy from GitHub → use this repo → Settings → Dockerfile path: Dockerfile.speech-engine
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.speech-engine"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

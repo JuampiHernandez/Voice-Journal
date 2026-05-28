@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
-import { ensureUser, saveJournalEntry } from "@/lib/memory";
+import { saveJournalEntry } from "@/lib/memory";
 import { getAppConfig } from "@/lib/config";
 import { analyzeTranscript } from "@/lib/analysis";
+import { withJournalUser } from "@/lib/auth/api-context";
 
-/** Seed sample entries for hackathon demo video */
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as { userId?: string };
-  const userId = body.userId ?? "demo-user";
-  ensureUser(userId);
+  const ctx = await withJournalUser(request, body.userId);
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
 
   const config = getAppConfig();
   if (!config.openaiReady) {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
   for (const sample of samples) {
     const date = format(new Date(Date.now() - sample.daysAgo * 86400000), "yyyy-MM-dd");
     const analysis = await analyzeTranscript(sample.transcript);
-    saveJournalEntry({
+    await saveJournalEntry({
       userId,
       entryDate: date,
       transcript: sample.transcript,

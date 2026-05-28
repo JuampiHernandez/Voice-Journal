@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getUserId } from "@/lib/user";
+import { useJournalUser } from "@/hooks/useJournalUser";
 import { ThreadMap, formatThreadDateRange } from "./ThreadMap";
 
 type Thread = {
@@ -18,53 +18,75 @@ type Thread = {
   relatedDates: string[];
 };
 
-const TREND_BADGE = {
+type ThreadVariant = "worry" | "bright";
+
+const WORRY_TREND_BADGE = {
   rising: "border-rose-500/30 bg-rose-500/10 text-rose-300",
   stable: "border-stone-500/30 bg-stone-500/10 text-stone-400",
   fading: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
 };
 
-const LOAD_BAR = {
+const BRIGHT_TREND_BADGE = {
+  rising: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+  stable: "border-stone-500/30 bg-stone-500/10 text-stone-400",
+  fading: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+};
+
+const WORRY_LOAD_BAR = {
   rising: "bg-gradient-to-r from-rose-600 to-amber-500",
   stable: "bg-gradient-to-r from-stone-600 to-stone-400",
   fading: "bg-gradient-to-r from-emerald-700 to-emerald-400",
 };
 
+const BRIGHT_LOAD_BAR = {
+  rising: "bg-gradient-to-r from-emerald-600 to-teal-400",
+  stable: "bg-gradient-to-r from-stone-600 to-stone-400",
+  fading: "bg-gradient-to-r from-amber-600 to-amber-400",
+};
+
 export function ThreadsView() {
+  const { userId, ready } = useJournalUser();
   const [threads, setThreads] = useState<Thread[]>([]);
+  const [brightThreads, setBrightThreads] = useState<Thread[]>([]);
   const [focusRecommendation, setFocusRecommendation] = useState<string | null>(null);
+  const [celebrateRecommendation, setCelebrateRecommendation] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function load() {
-    const userId = getUserId();
-    const res = await fetch(`/api/threads?userId=${userId}`);
+    const res = await fetch(`/api/threads?userId=${encodeURIComponent(userId)}`, {
+      credentials: "include",
+    });
     const data = await res.json();
     setThreads(data.threads ?? []);
+    setBrightThreads(data.brightThreads ?? []);
     setFocusRecommendation(data.focusRecommendation ?? null);
+    setCelebrateRecommendation(data.celebrateRecommendation ?? null);
     setLoading(false);
   }
 
   useEffect(() => {
-    void load();
-  }, []);
+    if (ready) void load();
+  }, [ready, userId]);
 
   async function generate() {
     setGenerating(true);
     setError(null);
-    const userId = getUserId();
     try {
       const res = await fetch("/api/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ userId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setThreads(data.threads);
+      setBrightThreads(data.brightThreads ?? []);
       setFocusRecommendation(data.focusRecommendation);
+      setCelebrateRecommendation(data.celebrateRecommendation ?? null);
       setExpandedId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to map threads");
@@ -86,17 +108,19 @@ export function ThreadsView() {
     return <p className="py-20 text-center text-stone-500">Mapping what&apos;s on your mind…</p>;
   }
 
-  const sorted = [...threads].sort((a, b) => a.focusPriority - b.focusPriority);
+  const sortedWorries = [...threads].sort((a, b) => a.focusPriority - b.focusPriority);
+  const sortedBright = [...brightThreads].sort((a, b) => a.focusPriority - b.focusPriority);
+  const hasAnyThreads = sortedWorries.length > 0 || sortedBright.length > 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-xl">
           <h1 className="font-serif text-2xl font-light tracking-tight text-stone-100 sm:text-3xl">
-            What&apos;s taking space in your head
+            What&apos;s on your mind
           </h1>
           <p className="mt-1.5 text-sm text-stone-500">
-            Ongoing worry threads from your journal — focus in, ease the noise.
+            Worry threads and bright threads from your journal — what weighs on you and what lifts you.
           </p>
         </div>
         <button
@@ -105,7 +129,7 @@ export function ThreadsView() {
           className="inline-flex items-center gap-2 rounded-full border border-stone-700 px-5 py-2.5 text-sm text-stone-300 transition-colors hover:border-stone-500 hover:text-stone-100 disabled:opacity-50"
         >
           <RefreshIcon spinning={generating} />
-          {generating ? "Analyzing…" : threads.length ? "Refresh map" : "Map my threads"}
+          {generating ? "Analyzing…" : hasAnyThreads ? "Refresh map" : "Map my threads"}
         </button>
       </div>
 
@@ -115,21 +139,7 @@ export function ThreadsView() {
         </p>
       )}
 
-      {focusRecommendation && (
-        <section className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3 sm:px-5">
-          <span className="mt-0.5 text-amber-400" aria-hidden>
-            ✦
-          </span>
-          <div>
-            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-amber-500">
-              Focus this week
-            </p>
-            <p className="mt-1.5 text-sm leading-relaxed text-stone-300">{focusRecommendation}</p>
-          </div>
-        </section>
-      )}
-
-      {sorted.length === 0 ? (
+      {!hasAnyThreads ? (
         <div className="rounded-2xl border border-dashed border-stone-800 py-16 text-center">
           <p className="text-sm text-stone-500">
             No threads yet. Add journal entries, then tap &ldquo;Map my threads&rdquo;.
@@ -137,38 +147,35 @@ export function ThreadsView() {
         </div>
       ) : (
         <>
-          <ThreadMap
-            threads={sorted}
-            activeId={expandedId}
-            onSelect={(id) => toggleThread(id, true)}
+          <ThreadSection
+            title="Taking space"
+            subtitle="Recurring worries and preoccupations"
+            recommendation={focusRecommendation}
+            recommendationLabel="Focus this week"
+            recommendationAccent="amber"
+            threads={sortedWorries}
+            variant="worry"
+            intensityColumn="Mental load"
+            nextStepColumn="Next step"
+            emptyMessage="No worry threads detected this period."
+            expandedId={expandedId}
+            onToggle={toggleThread}
           />
 
-          <div className="overflow-x-auto rounded-2xl border border-stone-800/80">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-stone-800 text-[0.65rem] font-medium uppercase tracking-[0.15em] text-stone-500">
-                  <th className="w-10 px-3 py-2.5 font-medium" />
-                  <th className="px-3 py-2.5 font-medium">Priority</th>
-                  <th className="px-3 py-2.5 font-medium">Thread</th>
-                  <th className="px-3 py-2.5 font-medium">Trend</th>
-                  <th className="px-3 py-2.5 font-medium">Mental load</th>
-                  <th className="px-3 py-2.5 font-medium">Mentions</th>
-                  <th className="px-3 py-2.5 font-medium">Next step</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((thread, index) => (
-                  <ThreadRow
-                    key={thread.id}
-                    thread={thread}
-                    rank={index + 1}
-                    expanded={expandedId === thread.id}
-                    onToggle={() => toggleThread(thread.id)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ThreadSection
+            title="Giving energy"
+            subtitle="Wins, gratitude, and things that lift you"
+            recommendation={celebrateRecommendation}
+            recommendationLabel="Celebrate this week"
+            recommendationAccent="emerald"
+            threads={sortedBright}
+            variant="bright"
+            intensityColumn="Energy"
+            nextStepColumn="Savor"
+            emptyMessage="No bright threads yet — they appear when you mention wins, gratitude, or things that energize you."
+            expandedId={expandedId}
+            onToggle={toggleThread}
+          />
         </>
       )}
 
@@ -180,20 +187,136 @@ export function ThreadsView() {
   );
 }
 
+function ThreadSection({
+  title,
+  subtitle,
+  recommendation,
+  recommendationLabel,
+  recommendationAccent,
+  threads,
+  variant,
+  intensityColumn,
+  nextStepColumn,
+  emptyMessage,
+  expandedId,
+  onToggle,
+}: {
+  title: string;
+  subtitle: string;
+  recommendation: string | null;
+  recommendationLabel: string;
+  recommendationAccent: "amber" | "emerald";
+  threads: Thread[];
+  variant: ThreadVariant;
+  intensityColumn: string;
+  nextStepColumn: string;
+  emptyMessage: string;
+  expandedId: string | null;
+  onToggle: (id: string, scrollToRow?: boolean) => void;
+}) {
+  const accentStyles =
+    recommendationAccent === "emerald"
+      ? {
+          border: "border-emerald-500/25 bg-emerald-500/[0.06]",
+          icon: "text-emerald-400",
+          label: "text-emerald-500",
+        }
+      : {
+          border: "border-amber-500/25 bg-amber-500/[0.06]",
+          icon: "text-amber-400",
+          label: "text-amber-500",
+        };
+
+  return (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-lg font-medium text-stone-200">{title}</h2>
+        <p className="mt-0.5 text-sm text-stone-500">{subtitle}</p>
+      </div>
+
+      {recommendation && (
+        <div className={`flex items-start gap-3 rounded-xl border px-4 py-3 sm:px-5 ${accentStyles.border}`}>
+          <span className={`mt-0.5 ${accentStyles.icon}`} aria-hidden>
+            ✦
+          </span>
+          <div>
+            <p className={`text-[0.65rem] font-semibold uppercase tracking-[0.2em] ${accentStyles.label}`}>
+              {recommendationLabel}
+            </p>
+            <p className="mt-1.5 text-sm leading-relaxed text-stone-300">{recommendation}</p>
+          </div>
+        </div>
+      )}
+
+      {threads.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-stone-800 px-4 py-10 text-center">
+          <p className="text-sm text-stone-500">{emptyMessage}</p>
+        </div>
+      ) : (
+        <>
+          <ThreadMap
+            threads={threads}
+            activeId={expandedId}
+            onSelect={(id) => onToggle(id, true)}
+            variant={variant}
+            intensityLabel={intensityColumn}
+          />
+
+          <div className="overflow-x-auto rounded-2xl border border-stone-800/80">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-stone-800 text-[0.65rem] font-medium uppercase tracking-[0.15em] text-stone-500">
+                  <th className="w-10 px-3 py-2.5 font-medium" />
+                  <th className="px-3 py-2.5 font-medium">Priority</th>
+                  <th className="px-3 py-2.5 font-medium">Thread</th>
+                  <th className="px-3 py-2.5 font-medium">Trend</th>
+                  <th className="px-3 py-2.5 font-medium">{intensityColumn}</th>
+                  <th className="px-3 py-2.5 font-medium">Mentions</th>
+                  <th className="px-3 py-2.5 font-medium">{nextStepColumn}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {threads.map((thread, index) => (
+                  <ThreadRow
+                    key={thread.id}
+                    thread={thread}
+                    rank={index + 1}
+                    variant={variant}
+                    expanded={expandedId === thread.id}
+                    onToggle={() => onToggle(thread.id)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function ThreadRow({
   thread,
   rank,
+  variant,
   expanded,
   onToggle,
 }: {
   thread: Thread;
   rank: number;
+  variant: ThreadVariant;
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const trendBadge = variant === "bright" ? BRIGHT_TREND_BADGE : WORRY_TREND_BADGE;
+  const loadBar = variant === "bright" ? BRIGHT_LOAD_BAR : WORRY_LOAD_BAR;
   const intensityPct = Math.round((thread.intensity / 10) * 100);
   const nextStep = thread.suggestedActions[0];
   const priorityAccent = rank <= 2;
+  const priorityStyles =
+    variant === "bright"
+      ? "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30"
+      : "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30";
 
   return (
     <>
@@ -211,9 +334,7 @@ function ThreadRow({
         <td className="px-3 py-3">
           <span
             className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${
-              priorityAccent
-                ? "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30"
-                : "bg-stone-800 text-stone-400"
+              priorityAccent ? priorityStyles : "bg-stone-800 text-stone-400"
             }`}
           >
             {rank}
@@ -222,7 +343,7 @@ function ThreadRow({
         <td className="px-3 py-3 font-medium text-stone-200">{thread.title}</td>
         <td className="px-3 py-3">
           <span
-            className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs capitalize ${TREND_BADGE[thread.trend]}`}
+            className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs capitalize ${trendBadge[thread.trend]}`}
           >
             {thread.trend}
           </span>
@@ -234,7 +355,7 @@ function ThreadRow({
             </span>
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-stone-800">
               <div
-                className={`h-full rounded-full ${LOAD_BAR[thread.trend]}`}
+                className={`h-full rounded-full ${loadBar[thread.trend]}`}
                 style={{ width: `${intensityPct}%` }}
               />
             </div>
@@ -259,7 +380,7 @@ function ThreadRow({
       {expanded && (
         <tr className="border-b border-stone-800/60 bg-stone-950/50">
           <td colSpan={7} className="px-6 py-5">
-            <ThreadDetail thread={thread} />
+            <ThreadDetail thread={thread} variant={variant} />
           </td>
         </tr>
       )}
@@ -267,7 +388,10 @@ function ThreadRow({
   );
 }
 
-function ThreadDetail({ thread }: { thread: Thread }) {
+function ThreadDetail({ thread, variant }: { thread: Thread; variant: ThreadVariant }) {
+  const actionsLabel = variant === "bright" ? "Ways to savor" : "Try this";
+  const accent = variant === "bright" ? "text-emerald-500" : "text-amber-500";
+
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       <div>
@@ -279,13 +403,13 @@ function ThreadDetail({ thread }: { thread: Thread }) {
 
       <div>
         <p className="text-[0.65rem] font-semibold uppercase tracking-[0.15em] text-stone-500">
-          Try this
+          {actionsLabel}
         </p>
         {thread.suggestedActions.length > 0 ? (
           <ul className="mt-2 space-y-2">
             {thread.suggestedActions.map((action, i) => (
               <li key={i} className="flex gap-2 text-sm text-stone-300">
-                <span className="shrink-0 text-amber-500">→</span>
+                <span className={`shrink-0 ${accent}`}>→</span>
                 {action}
               </li>
             ))}

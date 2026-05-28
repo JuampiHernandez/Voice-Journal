@@ -97,6 +97,16 @@ For the hackathon video, seed a week of sample entries:
 2. View weekly AI insights and emotional timeline
 3. Go to **Memoir** → **Generate my memoir** (uses TTS + Eleven Music)
 
+### 6. Deploy for judges (Vercel + Supabase + Railway)
+
+See **[docs/DEPLOY.md](docs/DEPLOY.md)** — Vercel for the app, **Railway for Speech Engine**, Supabase for auth/data, and `?user=JudgeName` guest mode.
+
+```bash
+# After Railway domain is live:
+SPEECH_ENGINE_WS_URL=wss://YOUR-DOMAIN.up.railway.app/ws npm run setup:production
+npm run deploy:railway   # or deploy via Railway dashboard (Dockerfile.speech-engine)
+```
+
 ---
 
 ## Pages
@@ -117,7 +127,11 @@ For the hackathon video, seed a week of sample entries:
 | `ELEVENLABS_API_KEY` | Yes | ElevenLabs API key |
 | `OPENAI_API_KEY` | Yes | LLM for agent, analysis, memoir script |
 | `SPEECH_ENGINE_ID` | For voice | From `npm run setup:speech-engine` |
-| `SPEECH_ENGINE_WS_URL` | For voice | Public `wss://…/ws` URL (ngrok) |
+| `SPEECH_ENGINE_WS_URL` | For voice | Public `wss://…/ws` URL (ngrok or Railway) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side DB (never expose to browser) |
+| `ALLOW_GUEST_JOURNAL` | Demo | `true` lets judges use `?user=Name` without email |
 | `ELEVENLABS_VOICE_ID` | No | Narrator voice (default: George) |
 
 ---
@@ -140,7 +154,8 @@ See **[docs/HACKATHON_DEMO_VIDEO.md](docs/HACKATHON_DEMO_VIDEO.md)** for the 60�
 - **@elevenlabs/elevenlabs-js** — Speech Engine server, TTS, Music API
 - **@elevenlabs/client** — Browser WebRTC conversation
 - **OpenAI** — Agent logic, transcript analysis, memoir script
-- **SQLite** — Private persistent memory
+- **Supabase Postgres** — Journal memory + auth (magic link)
+- **Supabase Storage** — Weekly voice recaps & memoir audio
 
 ---
 

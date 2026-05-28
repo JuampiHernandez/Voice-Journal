@@ -6,7 +6,7 @@ import { Conversation } from "@elevenlabs/client";
 import type { DisconnectionDetails, Mode, Status } from "@elevenlabs/client";
 import { TimerRing } from "./TimerRing";
 import { VoiceWave } from "./VoiceWave";
-import { getUserId } from "@/lib/user";
+import { authConfigured, useJournalUser } from "@/hooks/useJournalUser";
 
 const SESSION_SECONDS = 180;
 const MIN_SESSION_MS = 8000; // don't treat disconnect as "done" before this unless we heard speech
@@ -20,6 +20,7 @@ function ts() {
 }
 
 export function VoiceJournalSession() {
+  const { userId, ready, mode: journalMode } = useJournalUser();
   const [status, setStatus] = useState<SessionStatus>("idle");
   const [secondsLeft, setSecondsLeft] = useState(SESSION_SECONDS);
   const [error, setError] = useState<string | null>(null);
@@ -60,23 +61,25 @@ export function VoiceJournalSession() {
       .then((data) => {
         log(`config: speechEngineReady=${data.speechEngineReady}, health=${data.speechEngineHealth?.ok}`);
         if (data.speechEngineWsUrl) log(`wsUrl: ${data.speechEngineWsUrl}`);
-        if (data.ngrokTunnelReachable === false) {
+        if (data.speechEngineTunnelReachable === false || data.ngrokTunnelReachable === false) {
           const msg =
+            data.speechEngineTunnelError ??
             data.ngrokTunnelError ??
-            "ngrok tunnel offline — run: ngrok http 3002 (saves will use ElevenLabs fallback)";
+            "Speech Engine offline — check Railway deploy or run npm run dev:voice locally";
           setNgrokWarning(msg);
-          log(`ngrok OFFLINE: ${msg}`);
+          log(`Speech Engine tunnel OFFLINE: ${msg}`);
         } else {
           setNgrokWarning(null);
-          log("ngrok tunnel reachable");
+          log("Speech Engine tunnel reachable");
         }
         if (!data.speechEngineReady) {
           setSetupError(
-            `Speech Engine not ready. Missing: ${data.missing.join(", ")}. See README for setup.`
+            `Speech Engine not ready. Missing: ${data.missing.join(", ")}. See docs/DEPLOY.md`
           );
         } else if (!data.speechEngineHealth?.ok) {
           setSetupError(
-            `Speech Engine server not running on port 3002. Run: npm run speech-engine`
+            data.speechEngineHealth?.error ??
+              "Speech Engine server unreachable. Deploy to Railway or run npm run speech-engine locally."
           );
         }
       })
@@ -84,7 +87,6 @@ export function VoiceJournalSession() {
   }, [log]);
 
   const waitForServerSave = useCallback(async () => {
-    const userId = getUserId();
     const conversationId = conversationIdRef.current;
     if (!conversationId) {
       log("poll: no conversationId");
@@ -97,7 +99,8 @@ export function VoiceJournalSession() {
       }
 
       const res = await fetch(
-        `/api/check-in/status?userId=${encodeURIComponent(userId)}&conversationId=${encodeURIComponent(conversationId)}`
+        `/api/check-in/status?userId=${encodeURIComponent(userId)}&conversationId=${encodeURIComponent(conversationId)}`,
+        { credentials: "include" }
       );
       const data = (await res.json()) as { saved?: boolean; summary?: string | null };
 
@@ -109,14 +112,13 @@ export function VoiceJournalSession() {
     }
 
     return null;
-  }, [log]);
+  }, [log, userId]);
 
   const saveClientCheckIn = useCallback(async () => {
     const transcript = userTranscriptRef.current.join("\n").trim();
     log(`client save: ${transcript.length} chars, ${userTranscriptRef.current.length} lines`);
     if (!transcript) return null;
 
-    const userId = getUserId();
     const durationSeconds = Math.max(
       1,
       Math.round((Date.now() - sessionStartedAtRef.current) / 1000)
@@ -125,6 +127,7 @@ export function VoiceJournalSession() {
     const res = await fetch("/api/check-in", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         userId,
         transcript,
@@ -146,13 +149,12 @@ export function VoiceJournalSession() {
 
     const label = data.summary ?? "Entry saved.";
     return data.note ? `${label} (${data.note})` : label;
-  }, [log]);
+  }, [log, userId]);
 
   const importFromElevenLabs = useCallback(async () => {
     const conversationId = conversationIdRef.current;
     if (!conversationId) return null;
 
-    const userId = getUserId();
     const durationSeconds = Math.max(
       1,
       Math.round((Date.now() - sessionStartedAtRef.current) / 1000)
@@ -162,6 +164,7 @@ export function VoiceJournalSession() {
     const res = await fetch("/api/check-in/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ userId, conversationId, durationSeconds }),
     });
 
@@ -176,7 +179,7 @@ export function VoiceJournalSession() {
 
     if (!res.ok || !data.saved) return null;
     return data.summary ?? "Entry saved from ElevenLabs.";
-  }, [log]);
+  }, [log, userId]);
 
   const finalizeSession = useCallback(
     async (options?: { endConversation?: boolean }) => {
@@ -266,14 +269,14 @@ export function VoiceJournalSession() {
       const secs = Math.round(elapsed / 1000);
       setError(
         `No speech was captured (${secs}s, ${lines} client lines). ` +
-          `Speech Engine unreachable — run: ngrok http 3002 && npm run sync:speech-engine`
+          `Speech Engine unreachable — check Railway /health or run npm run dev:voice locally`
       );
       setStatus("error");
       setShowDebug(true);
       isEndingRef.current = false;
       userEndedRef.current = false;
     },
-    [importFromElevenLabs, log, saveClientCheckIn, waitForServerSave]
+    [importFromElevenLabs, log, saveClientCheckIn, userId, waitForServerSave]
   );
 
   const handleUnexpectedDisconnect = useCallback(
@@ -309,7 +312,7 @@ export function VoiceJournalSession() {
   );
 
   const startSession = useCallback(async () => {
-    if (setupError) return;
+    if (setupError || !ready) return;
 
     setError(null);
     setSaveStatus(null);
@@ -331,9 +334,10 @@ export function VoiceJournalSession() {
       stream.getTracks().forEach((t) => t.stop());
       log("mic permission granted");
 
-      const userId = getUserId();
       log(`fetching token for ${userId}`);
-      const res = await fetch(`/api/conversation-token?userId=${encodeURIComponent(userId)}`);
+      const res = await fetch(`/api/conversation-token?userId=${encodeURIComponent(userId)}`, {
+        credentials: "include",
+      });
       const data = await res.json();
 
       if (!res.ok) {
@@ -363,7 +367,7 @@ export function VoiceJournalSession() {
         onDisconnect: handleUnexpectedDisconnect,
         onError: (message, context) => {
           log(`error: ${message} ${context ? JSON.stringify(context) : ""}`);
-          setError(`Voice error: ${message}. Is speech-engine + ngrok running?`);
+          setError(`Voice error: ${message}. Is Speech Engine deployed (Railway) or running locally?`);
           setStatus("error");
           setShowDebug(true);
         },
@@ -421,7 +425,7 @@ export function VoiceJournalSession() {
       setStatus("error");
       setShowDebug(true);
     }
-  }, [finalizeSession, handleUnexpectedDisconnect, log, setupError]);
+  }, [finalizeSession, handleUnexpectedDisconnect, log, ready, setupError, userId]);
 
   // Only end session on page unload — NOT on React strict-mode remount
   useEffect(() => {
@@ -473,6 +477,16 @@ export function VoiceJournalSession() {
         </div>
       )}
 
+      {ready && journalMode === "guest" && authConfigured() && (
+        <p className="w-full rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-center text-xs text-amber-200/90">
+          Not signed in — this check-in saves to a guest profile.{" "}
+          <Link href="/login" className="underline hover:text-amber-100">
+            Sign in
+          </Link>{" "}
+          so it appears in Insights.
+        </p>
+      )}
+
       {error && (
         <p className="w-full rounded-lg border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-center text-xs text-rose-300">
           {error}
@@ -480,7 +494,9 @@ export function VoiceJournalSession() {
       )}
 
       <div className="flex min-h-[5.5rem] flex-col items-center justify-center gap-3 pt-2">
-        {status === "idle" || status === "error" || status === "done" ? (
+        {!ready ? (
+          <p className="text-sm text-stone-500">Loading your account…</p>
+        ) : status === "idle" || status === "error" || status === "done" ? (
           <button
             onClick={startSession}
             disabled={!!setupError}

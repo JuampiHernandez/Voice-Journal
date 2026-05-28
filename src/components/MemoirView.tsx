@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getUserId } from "@/lib/user";
+import { useJournalUser } from "@/hooks/useJournalUser";
 
 export function MemoirView() {
+  const { userId, ready } = useJournalUser();
   const [generating, setGenerating] = useState(false);
   const [memoir, setMemoir] = useState<{
     script: string;
@@ -19,8 +20,10 @@ export function MemoirView() {
   const year = new Date().getFullYear();
 
   useEffect(() => {
-    const userId = getUserId();
-    fetch(`/api/memoir?userId=${userId}&year=${year}`)
+    if (!ready) return;
+    fetch(`/api/memoir?userId=${encodeURIComponent(userId)}&year=${year}`, {
+      credentials: "include",
+    })
       .then((r) => r.json())
       .then((data) => {
         if (data.exists) {
@@ -31,17 +34,16 @@ export function MemoirView() {
           });
         }
       });
-  }, [year]);
+  }, [year, ready, userId]);
 
   async function generate() {
     setGenerating(true);
     setError(null);
-    const userId = getUserId();
-
     try {
       const res = await fetch("/api/memoir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ userId, year }),
       });
       const data = await res.json();

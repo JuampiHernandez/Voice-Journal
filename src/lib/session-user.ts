@@ -1,19 +1,31 @@
-import { getDb } from "./db";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-export function registerPendingSessionUser(userId: string) {
-  const db = getDb();
-  db.prepare("INSERT INTO pending_session_users (user_id) VALUES (?)").run(userId);
-  db.prepare(
-    "DELETE FROM pending_session_users WHERE created_at < datetime('now', '-2 minutes')"
-  ).run();
+export async function registerPendingSessionUser(userId: string) {
+  const supabase = createAdminClient();
+  await supabase.from("pending_session_users").insert({ user_id: userId });
+  await supabase
+    .from("pending_session_users")
+    .delete()
+    .lt("created_at", new Date(Date.now() - 2 * 60 * 1000).toISOString());
 }
 
-export function consumePendingSessionUser(): string {
-  const db = getDb();
-  const row = db
-    .prepare(
-      "SELECT user_id FROM pending_session_users ORDER BY created_at DESC LIMIT 1"
-    )
-    .get() as { user_id: string } | undefined;
-  return row?.user_id ?? process.env.DEFAULT_USER_ID ?? "demo-user";
+export async function consumePendingSessionUser(): Promise<string> {
+  const supabase = createAdminClient();
+  const { data: pending } = await supabase
+    .from("pending_session_users")
+    .select("user_id, created_at")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (pending?.user_id) {
+    await supabase
+      .from("pending_session_users")
+      .delete()
+      .eq("user_id", pending.user_id)
+      .eq("created_at", pending.created_at);
+    return pending.user_id;
+  }
+
+  return process.env.DEFAULT_USER_ID ?? "demo-user";
 }

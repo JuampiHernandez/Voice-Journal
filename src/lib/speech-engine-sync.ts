@@ -2,6 +2,27 @@ import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { verifyPublicWsTunnel } from "./elevenlabs-conversation";
 import { syncSpeechEngineConversationConfig } from "./speech-engine-config";
 
+/** Resolve public wss URL from env (explicit, Railway, or null). */
+export function resolveSpeechEngineWsUrl(): string | null {
+  const explicit = process.env.SPEECH_ENGINE_WS_URL?.trim();
+  if (explicit?.startsWith("wss://")) {
+    return explicit.replace(/\/+$/, "").replace(/\/ws\/?$/, "") + "/ws";
+  }
+
+  const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (railwayDomain) {
+    return `wss://${railwayDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/ws`;
+  }
+
+  const staticUrl = process.env.RAILWAY_STATIC_URL?.trim();
+  if (staticUrl) {
+    const host = staticUrl.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    return `wss://${host}/ws`;
+  }
+
+  return null;
+}
+
 async function detectNgrokWsUrl(): Promise<string | null> {
   for (const port of [4040, 4041, 4042, 4043, 4044, 4045]) {
     try {
@@ -35,20 +56,24 @@ export async function syncSpeechEngineWsUrl(): Promise<{
 }> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const engineId = process.env.SPEECH_ENGINE_ID;
-  let expected = process.env.SPEECH_ENGINE_WS_URL?.trim();
+  let expected = resolveSpeechEngineWsUrl();
 
   if (!apiKey || !engineId) {
     return { ok: false, error: "Missing ELEVENLABS_API_KEY or SPEECH_ENGINE_ID" };
   }
 
-  const detected = await detectNgrokWsUrl();
-  if (detected && detected !== expected) {
-    console.log(`[speech-engine-sync] using ngrok URL: ${detected}`);
-    expected = detected;
+  const ngrok = await detectNgrokWsUrl();
+  if (ngrok && ngrok !== expected) {
+    console.log(`[speech-engine-sync] using ngrok URL: ${ngrok}`);
+    expected = ngrok;
   }
 
   if (!expected) {
-    return { ok: false, error: "Missing SPEECH_ENGINE_WS_URL and ngrok tunnel not detected" };
+    return {
+      ok: false,
+      error:
+        "Missing SPEECH_ENGINE_WS_URL (or RAILWAY_PUBLIC_DOMAIN on Railway, or ngrok for local dev)",
+    };
   }
 
   if (!expected.startsWith("wss://")) {

@@ -1,8 +1,8 @@
 import { buildMemoryContext } from "./memory";
 
 /** System instructions for the Speech Engine voice companion */
-export function buildAgentInstructions(userId: string): string {
-  const memoryContext = buildMemoryContext(userId);
+export async function buildAgentInstructions(userId: string): Promise<string> {
+  const memoryContext = await buildMemoryContext(userId);
 
   return `You are Voice Journal — a warm, emotionally intelligent daily companion. You are NOT a licensed therapist. You offer reflection, validation, and practical next steps.
 

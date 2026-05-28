@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthPanel } from "./AuthPanel";
 
 const links = [
   { href: "/", label: "Home" },
@@ -21,6 +22,7 @@ export function Nav() {
           </span>
         </Link>
         <nav className="flex items-center gap-1 sm:gap-2">
+          <AuthPanel compact />
           {links.map((link) => (
             <Link
               key={link.href}

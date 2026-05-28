@@ -11,12 +11,15 @@ async function main() {
 
   if (!WS_URL) {
     console.error(
-      "Missing SPEECH_ENGINE_WS_URL — set to your public WebSocket URL, e.g. wss://abc123.ngrok.io/ws"
+      "Missing SPEECH_ENGINE_WS_URL — set to your public WebSocket URL, e.g.:"
     );
-    console.error("\nSteps:");
+    console.error("  Production: wss://YOUR-DOMAIN.up.railway.app/ws");
+    console.error("  Local dev:  wss://YOUR-NGROK-URL/ws");
+    console.error("\nSteps (local):");
     console.error("  1. Start ngrok: ngrok http 3002");
     console.error("  2. Set SPEECH_ENGINE_WS_URL=wss://YOUR-NGROK-URL/ws in .env");
     console.error("  3. Re-run this script");
+    console.error("\nSteps (Railway): see docs/DEPLOY.md → npm run setup:production");
     process.exit(1);
   }
 

@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import type { WorryThread } from "./db";
+import type { BrightThread, WorryThread } from "./types";
 
 const AnalysisSchema = z.object({
   summary: z.string(),
@@ -25,22 +25,24 @@ const WeeklySchema = z.object({
   supportNote: z.string(),
 });
 
-const ThreadsSchema = z.object({
+const ThreadItemSchema = z.object({
+  title: z.string(),
+  summary: z.string(),
+  intensity: z.number().min(0).max(10),
+  trend: z.enum(["rising", "stable", "fading"]),
+  mentionCount: z.number(),
+  firstSeen: z.string(),
+  lastSeen: z.string(),
+  focusPriority: z.number().min(1).max(5),
+  suggestedActions: z.array(z.string()),
+  relatedDates: z.array(z.string()),
+});
+
+const MindThreadsSchema = z.object({
   focusRecommendation: z.string(),
-  threads: z.array(
-    z.object({
-      title: z.string(),
-      summary: z.string(),
-      intensity: z.number().min(0).max(10),
-      trend: z.enum(["rising", "stable", "fading"]),
-      mentionCount: z.number(),
-      firstSeen: z.string(),
-      lastSeen: z.string(),
-      focusPriority: z.number().min(1).max(5),
-      suggestedActions: z.array(z.string()),
-      relatedDates: z.array(z.string()),
-    })
-  ),
+  celebrateRecommendation: z.string(),
+  worryThreads: z.array(ThreadItemSchema),
+  brightThreads: z.array(ThreadItemSchema),
 });
 
 function getOpenAI() {
@@ -138,44 +140,12 @@ Rules:
   return response.choices[0]?.message?.content?.trim() ?? summary.slice(0, 800);
 }
 
-export async function generateWorryThreads(
-  entries: {
-    date: string;
-    summary: string;
-    mood: number | null;
-    themes: string[];
-    openThread?: string | null;
-  }[]
-): Promise<{ threads: WorryThread[]; focusRecommendation: string }> {
-  const openai = getOpenAI();
-
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: `Extract the user's active "worry threads" — ongoing mental preoccupations (work stress, relationship, health anxiety, etc.).
-Return JSON:
-- focusRecommendation: 2-3 sentences on which 1-2 threads deserve focus THIS week and why
-- threads: 3-6 items, each with:
-  - title: short label (3-5 words)
-  - summary: what's going on in their head (2-3 sentences)
-  - intensity: 0-10 how much mental space it takes
-  - trend: rising | stable | fading
-  - mentionCount: estimated times it appeared
-  - firstSeen, lastSeen: YYYY-MM-DD from entries
-  - focusPriority: 1 (highest) to 5
-  - suggestedActions: 2-3 concrete, kind, actionable steps (not therapy homework)
-  - relatedDates: dates it showed up`,
-      },
-      { role: "user", content: JSON.stringify(entries, null, 2) },
-    ],
-  });
-
-  const parsed = ThreadsSchema.parse(JSON.parse(response.choices[0]?.message?.content ?? "{}"));
-  const threads: WorryThread[] = parsed.threads.map((t, i) => ({
-    id: `thread-${i}`,
+function mapThreadItems(
+  items: z.infer<typeof ThreadItemSchema>[],
+  idPrefix: string
+): WorryThread[] {
+  return items.map((t, i) => ({
+    id: `${idPrefix}-${i}`,
     title: t.title,
     summary: t.summary,
     intensity: t.intensity,
@@ -187,8 +157,74 @@ Return JSON:
     suggestedActions: t.suggestedActions,
     relatedDates: t.relatedDates,
   }));
+}
 
-  return { threads, focusRecommendation: parsed.focusRecommendation };
+export async function generateMindThreads(
+  entries: {
+    date: string;
+    summary: string;
+    mood: number | null;
+    themes: string[];
+    openThread?: string | null;
+  }[]
+): Promise<{
+  threads: WorryThread[];
+  focusRecommendation: string;
+  brightThreads: BrightThread[];
+  celebrateRecommendation: string;
+}> {
+  const openai = getOpenAI();
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `Analyze voice journal entries and extract two kinds of ongoing mental threads.
+
+1) WORRY THREADS — recurring preoccupations (work stress, relationship tension, health anxiety, etc.)
+2) BRIGHT THREADS — recurring sources of energy, joy, gratitude, progress, or connection (friendships, creative flow, fitness wins, small daily pleasures, etc.)
+
+Return JSON:
+- focusRecommendation: 2-3 sentences on which 1-2 worry threads deserve focus THIS week and why
+- celebrateRecommendation: 2-3 sentences on which 1-2 bright threads to notice and lean into this week
+- worryThreads: 3-6 items (empty array if none)
+- brightThreads: 2-5 items (empty array if the week had no clear positives — do not invent wins)
+
+Each thread item:
+- title: short label (3-5 words)
+- summary: what's going on (2-3 sentences)
+- intensity: 0-10 mental space (worries) or positive energy (bright threads)
+- trend: rising | stable | fading
+- mentionCount: estimated times it appeared
+- firstSeen, lastSeen: YYYY-MM-DD from entries
+- focusPriority: 1 (highest) to 5
+- suggestedActions: 2-3 concrete, kind steps (worries: gentle actions; bright: ways to savor or keep going)
+- relatedDates: dates it showed up
+
+Do not list the same topic in both lists unless the framing is genuinely different.`,
+      },
+      { role: "user", content: JSON.stringify(entries, null, 2) },
+    ],
+  });
+
+  const parsed = MindThreadsSchema.parse(JSON.parse(response.choices[0]?.message?.content ?? "{}"));
+
+  return {
+    threads: mapThreadItems(parsed.worryThreads, "thread"),
+    focusRecommendation: parsed.focusRecommendation,
+    brightThreads: mapThreadItems(parsed.brightThreads, "bright"),
+    celebrateRecommendation: parsed.celebrateRecommendation,
+  };
+}
+
+/** @deprecated Use generateMindThreads */
+export async function generateWorryThreads(
+  entries: Parameters<typeof generateMindThreads>[0]
+): Promise<{ threads: WorryThread[]; focusRecommendation: string }> {
+  const result = await generateMindThreads(entries);
+  return { threads: result.threads, focusRecommendation: result.focusRecommendation };
 }
 
 export async function generateMemoirScript(

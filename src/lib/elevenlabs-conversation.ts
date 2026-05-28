@@ -57,7 +57,7 @@ export async function verifyPublicWsTunnel(wsUrl: string): Promise<{
         reachable: false,
         httpUrl,
         error: offline
-          ? "ngrok tunnel is offline — restart: ngrok http 3002 (then npm run sync:speech-engine)"
+          ? "Speech Engine tunnel offline — check Railway deploy or run ngrok http 3002 locally"
           : `HTTP ${res.status} from ${httpUrl}`,
       };
     }
@@ -73,7 +73,7 @@ export async function verifyPublicWsTunnel(wsUrl: string): Promise<{
       reachable: false,
       httpUrl,
       error: offline
-        ? "ngrok tunnel is offline — run: ngrok http 3002"
+        ? "Speech Engine unreachable — check Railway /health or run ngrok http 3002 locally"
         : msg,
     };
   }

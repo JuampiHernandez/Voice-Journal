@@ -1,3 +1,5 @@
+import { resolveSpeechEngineWsUrl } from "@/lib/speech-engine-sync";
+
 export type AppConfig = {
   speechEngineReady: boolean;
   openaiReady: boolean;
@@ -9,7 +11,7 @@ export function getAppConfig(): AppConfig {
   const elevenKey = process.env.ELEVENLABS_API_KEY ?? "";
   const openaiKey = process.env.OPENAI_API_KEY ?? "";
   const speechEngineId = process.env.SPEECH_ENGINE_ID ?? "";
-  const wsUrl = process.env.SPEECH_ENGINE_WS_URL ?? "";
+  const wsUrl = resolveSpeechEngineWsUrl() ?? process.env.SPEECH_ENGINE_WS_URL ?? "";
 
   const elevenlabsReady =
     elevenKey.length > 0 && !elevenKey.includes("your_") && !elevenKey.startsWith("sk-your");

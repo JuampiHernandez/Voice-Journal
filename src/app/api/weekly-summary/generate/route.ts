@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "node:path";
 import {
-  ensureUser,
   getCurrentWeekRange,
   getEntriesForRecap,
   saveWeeklySummary,
   saveWeeklyVoice,
 } from "@/lib/memory";
 import { generateWeeklySummary, generateWeeklyVoiceScript } from "@/lib/analysis";
-import { generateNarration } from "@/lib/elevenlabs";
+import { generateNarrationBuffer } from "@/lib/elevenlabs";
 import { getAppConfig } from "@/lib/config";
+import { withJournalUser } from "@/lib/auth/api-context";
+import { uploadAudio, weeklyAudioPath } from "@/lib/storage";
 
-/** On-demand weekly recap (text + voice MP3). Use ?demo=true to include all recent entries. */
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     userId?: string;
@@ -19,18 +18,22 @@ export async function POST(request: NextRequest) {
     skipVoice?: boolean;
   };
 
-  const userId = body.userId ?? request.nextUrl.searchParams.get("userId") ?? "demo-user";
+  const ctx = await withJournalUser(
+    request,
+    body.userId ?? request.nextUrl.searchParams.get("userId")
+  );
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
+
   const demoMode = body.demo ?? request.nextUrl.searchParams.get("demo") === "true";
   const skipVoice = body.skipVoice ?? false;
-
-  ensureUser(userId);
 
   const config = getAppConfig();
   if (!config.openaiReady) {
     return NextResponse.json({ error: "OPENAI_API_KEY required" }, { status: 503 });
   }
 
-  const rawEntries = getEntriesForRecap(userId, demoMode);
+  const rawEntries = await getEntriesForRecap(userId, demoMode);
   const entries = rawEntries
     .filter((e) => e.summary && e.summary !== "Processing your check-in…")
     .map((e) => ({
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const generated = await generateWeeklySummary(entries, { demoLabel: label });
-    saveWeeklySummary(userId, weekStart, weekEnd, generated.summary, generated.insights, {
+    await saveWeeklySummary(userId, weekStart, weekEnd, generated.summary, generated.insights, {
       supportNote: generated.supportNote,
     });
 
@@ -71,11 +74,11 @@ export async function POST(request: NextRequest) {
         generated.supportNote
       );
 
-      const outputDir = path.join(process.cwd(), "data", "weekly", userId);
-      const audioPath = path.join(outputDir, `${weekStart}.mp3`);
-      await generateNarration(voiceScript, audioPath);
-      saveWeeklyVoice(userId, weekStart, voiceScript, audioPath);
-      audioUrl = `/api/weekly-summary/audio?userId=${encodeURIComponent(userId)}&weekStart=${weekStart}`;
+      const buffer = await generateNarrationBuffer(voiceScript);
+      const storagePath = weeklyAudioPath(userId, weekStart);
+      await uploadAudio(storagePath, buffer);
+      await saveWeeklyVoice(userId, weekStart, voiceScript, storagePath);
+      audioUrl = `/api/weekly-summary/audio?weekStart=${weekStart}`;
     }
 
     return NextResponse.json({

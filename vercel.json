@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "src/app/api/memoir/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/weekly-summary/generate/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/demo/seed/route.ts": {
+      "maxDuration": 120
+    }
+  }
+}

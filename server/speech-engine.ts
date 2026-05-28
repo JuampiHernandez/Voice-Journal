@@ -9,12 +9,13 @@ import { syncSpeechEngineConversationConfig } from "../src/lib/speech-engine-con
 import { consumePendingSessionUser } from "../src/lib/session-user";
 import { analyzeTranscript } from "../src/lib/analysis";
 import { fetchConversationUserTranscript } from "../src/lib/elevenlabs-conversation";
-import { syncSpeechEngineWsUrl } from "../src/lib/speech-engine-sync";
+import { resolveSpeechEngineWsUrl, syncSpeechEngineWsUrl } from "../src/lib/speech-engine-sync";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const SPEECH_ENGINE_ID = process.env.SPEECH_ENGINE_ID;
-const PORT = Number(process.env.SPEECH_ENGINE_PORT ?? 3002);
+const PORT = Number(process.env.PORT ?? process.env.SPEECH_ENGINE_PORT ?? 3002);
+const HOST = process.env.SPEECH_ENGINE_HOST ?? "0.0.0.0";
 
 if (!process.env.ELEVENLABS_API_KEY) {
   console.error("Missing ELEVENLABS_API_KEY");
@@ -110,7 +111,7 @@ async function persistSession(session: SpeechEngineSession, reason: string) {
     const durationSeconds = Math.round((Date.now() - meta.startedAt) / 1000);
 
     // Save transcript immediately so the UI can confirm while analysis runs
-    meta.entryId = saveJournalEntry({
+    meta.entryId = await saveJournalEntry({
       userId: meta.userId,
       transcript: userLines,
       summary: "Processing your check-in…",
@@ -122,7 +123,7 @@ async function persistSession(session: SpeechEngineSession, reason: string) {
 
     const analysis = await analyzeTranscript(userLines);
 
-    saveJournalEntry({
+    await saveJournalEntry({
       userId: meta.userId,
       entryId: meta.entryId,
       transcript: userLines,
@@ -135,7 +136,7 @@ async function persistSession(session: SpeechEngineSession, reason: string) {
       openThread: analysis.openThread,
     });
 
-    const saved = getEntryById(meta.userId, meta.entryId);
+    const saved = await getEntryById(meta.userId, meta.entryId);
     console.log(`Saved journal entry (${reason}) for`, meta.userId, saved?.entry_date);
   } catch (err) {
     meta.saved = false;
@@ -165,10 +166,11 @@ async function main() {
   }
 
   if (!sync.ok) {
-    console.error("Speech Engine URL sync failed:", sync.error);
-    process.exit(1);
-  }
-  if (sync.updated) {
+    console.warn("Speech Engine URL sync warning:", sync.error);
+    console.warn(
+      "Starting server anyway — ensure ngrok is up, then run: npm run sync:speech-engine"
+    );
+  } else if (sync.updated) {
     console.log(`Updated ElevenLabs wsUrl: ${sync.registered} → ${sync.expected}`);
   } else {
     console.log(`ElevenLabs wsUrl OK: ${sync.expected}`);
@@ -177,9 +179,9 @@ async function main() {
   await elevenlabs.speechEngine.attach(SPEECH_ENGINE_ID!, httpServer, "/ws", {
     debug: true,
 
-    onInit(conversationId, session) {
-      const userId = consumePendingSessionUser();
-      ensureUser(userId);
+    async onInit(conversationId, session) {
+      const userId = await consumePendingSessionUser();
+      await ensureUser(userId);
       sessionMetaByConversation.set(conversationId, {
         userId,
         startedAt: Date.now(),
@@ -192,7 +194,7 @@ async function main() {
     async onTranscript(transcript, signal, session) {
       const meta = getSessionMeta(session);
       const userId = meta?.userId ?? "demo-user";
-      ensureUser(userId);
+      await ensureUser(userId);
 
       const userLines = transcript.filter((m) => m.role === "user");
       console.log(
@@ -200,7 +202,7 @@ async function main() {
         userLines.map((m) => m.content.slice(0, 60)).join(" | ") || "(no user speech yet)"
       );
 
-      const instructions = buildAgentInstructions(userId);
+      const instructions = await buildAgentInstructions(userId);
 
       if (meta) {
         meta.transcript = transcript.map((m) => ({
@@ -243,11 +245,19 @@ async function main() {
     },
   });
 
-  httpServer.listen(PORT, () => {
-    console.log(`Voice Journal Speech Engine listening on http://localhost:${PORT}`);
-    console.log(`WebSocket: ws://localhost:${PORT}/ws`);
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`Voice Journal Speech Engine listening on http://${HOST}:${PORT}`);
+    console.log(`WebSocket: ws://${HOST}:${PORT}/ws`);
     console.log(`Speech Engine ID: ${SPEECH_ENGINE_ID}`);
-    console.log(`Journal DB: ${process.cwd()}/data/voice-journal.db`);
+    const publicWs = resolveSpeechEngineWsUrl();
+    if (publicWs) {
+      console.log(`Public WebSocket: ${publicWs}`);
+    } else if (process.env.RAILWAY_ENVIRONMENT) {
+      console.warn(
+        "Railway: generate a public domain in Settings → Networking, then restart (or set SPEECH_ENGINE_WS_URL)"
+      );
+    }
+    console.log(`Journal DB: Supabase (${process.env.NEXT_PUBLIC_SUPABASE_URL ?? "not configured"})`);
   });
 }
 

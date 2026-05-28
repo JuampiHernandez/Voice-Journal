@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { getUserId } from "@/lib/user";
+import { useJournalUser } from "@/hooks/useJournalUser";
 import {
   EmotionalTimelineChart,
   formatEntryDate,
@@ -26,6 +26,7 @@ type DashboardData = {
 };
 
 export function DashboardView() {
+  const { userId, ready, mode } = useJournalUser();
   const [data, setData] = useState<DashboardData | null>(null);
   const [weekly, setWeekly] = useState<{
     summary: string;
@@ -34,6 +35,7 @@ export function DashboardView() {
     audioUrl?: string | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [generatingRecap, setGeneratingRecap] = useState(false);
   const [recapError, setRecapError] = useState<string | null>(null);
@@ -44,19 +46,44 @@ export function DashboardView() {
   const [audioDuration, setAudioDuration] = useState(0);
 
   async function loadDashboard() {
-    const userId = getUserId();
-    const [entries, weeklyData] = await Promise.all([
-      fetch(`/api/entries?userId=${userId}`).then((r) => r.json()),
-      fetch(`/api/weekly-summary?userId=${userId}`).then((r) => r.json()),
+    setLoadError(null);
+    const [entriesRes, weeklyRes] = await Promise.all([
+      fetch(`/api/entries?userId=${encodeURIComponent(userId)}`, { credentials: "include" }),
+      fetch(`/api/weekly-summary?userId=${encodeURIComponent(userId)}`, {
+        credentials: "include",
+      }),
     ]);
-    setData(entries);
-    setWeekly(weeklyData);
+    const entries = await entriesRes.json();
+    const weeklyData = await weeklyRes.json();
+
+    if (!entriesRes.ok) {
+      setLoadError(entries.error ?? "Could not load your journal");
+      setData({ streak: 0, todayCompleted: false, entries: [], emotionalMoments: [] });
+    } else {
+      setData(entries);
+    }
+
+    if (weeklyRes.ok) {
+      setWeekly(weeklyData);
+    } else {
+      setWeekly(null);
+    }
+
     setLoading(false);
   }
 
   useEffect(() => {
-    void loadDashboard();
-  }, []);
+    if (ready) void loadDashboard();
+  }, [ready, userId]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadDashboard();
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, [ready, userId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -81,10 +108,10 @@ export function DashboardView() {
 
   async function seedDemo() {
     setSeeding(true);
-    const userId = getUserId();
     await fetch("/api/demo/seed", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ userId }),
     });
     window.location.reload();
@@ -93,11 +120,11 @@ export function DashboardView() {
   async function generateWeeklyRecap(demo: boolean) {
     setGeneratingRecap(true);
     setRecapError(null);
-    const userId = getUserId();
     try {
       const res = await fetch("/api/weekly-summary/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ userId, demo }),
       });
       const recap = await res.json();
@@ -131,14 +158,34 @@ export function DashboardView() {
     return <p className="py-20 text-center text-stone-500">Loading your memory…</p>;
   }
 
-  const hasEntries = (data?.entries.length ?? 0) > 0;
-  const visibleEntries = showAllEntries ? data?.entries ?? [] : (data?.entries ?? []).slice(0, 4);
+  const entries = data?.entries ?? [];
+  const hasEntries = entries.length > 0;
+  const visibleEntries = showAllEntries ? entries : entries.slice(0, 4);
   const topInsight = weekly?.insights?.[0] ?? weekly?.supportNote;
   const hasRecap = weekly?.summary && !weekly.summary.startsWith("No entries");
   const progressPct = audioDuration ? (audioProgress / audioDuration) * 100 : 0;
 
   return (
     <div className="space-y-6">
+      {loadError && (
+        <p className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+          {loadError}.{" "}
+          <a href="/login" className="text-amber-400 hover:underline">
+            Sign in
+          </a>{" "}
+          or ask your host to enable guest mode for local demos.
+        </p>
+      )}
+      {mode === "guest" && (
+        <p className="rounded-xl border border-stone-800 bg-stone-900/50 px-4 py-3 text-xs text-stone-500">
+          Guest journal: <code className="text-amber-200/80">{userId}</code> — add{" "}
+          <code className="text-amber-200/80">?user=YourName</code> to the URL for your own data, or{" "}
+          <a href="/login" className="text-amber-400 hover:underline">
+            sign in
+          </a>{" "}
+          with a magic link.
+        </p>
+      )}
       {/* Header + stats */}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div>
@@ -159,7 +206,7 @@ export function DashboardView() {
           />
           <StatCard
             label="Total entries"
-            value={String(data?.entries.length ?? 0)}
+            value={String(entries.length)}
             sub="All time"
             accent="stone"
           />
@@ -271,9 +318,9 @@ export function DashboardView() {
             <ThreadsIcon />
           </span>
           <div>
-            <h2 className="text-base font-medium text-stone-200">Worry threads</h2>
+            <h2 className="text-base font-medium text-stone-200">Mind threads</h2>
             <p className="text-sm text-stone-500">
-              Explore your recurring worries and how they&apos;ve evolved.
+              Explore recurring worries and bright spots from your journal.
             </p>
           </div>
         </div>
@@ -290,7 +337,7 @@ export function DashboardView() {
         <section className="rounded-2xl border border-stone-800/80 bg-stone-900/30 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-medium text-stone-100">Recent entries</h2>
-            {hasEntries && (data?.entries.length ?? 0) > 4 && (
+            {hasEntries && entries.length > 4 && (
               <button
                 onClick={() => setShowAllEntries((v) => !v)}
                 className="text-xs text-amber-400/80 hover:text-amber-300"
@@ -338,7 +385,7 @@ export function DashboardView() {
           )}
         </section>
 
-        <EmotionalTimelineChart entries={data?.entries ?? []} />
+        <EmotionalTimelineChart entries={entries} />
       </div>
 
       <p className="flex items-center justify-center gap-2 pt-2 text-center text-xs text-stone-600">

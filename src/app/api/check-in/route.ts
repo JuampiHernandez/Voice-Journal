@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
-import { ensureUser, getEntryById, saveJournalEntry } from "@/lib/memory";
+import { getEntryById, saveJournalEntry } from "@/lib/memory";
 import { getAppConfig } from "@/lib/config";
 import { analyzeTranscript } from "@/lib/analysis";
+import { withJournalUser } from "@/lib/auth/api-context";
 
-/** Save a check-in from the browser (backup when Speech Engine WS misses transcripts) */
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
     userId?: string;
@@ -13,7 +13,10 @@ export async function POST(request: NextRequest) {
     conversationId?: string;
   };
 
-  const userId = body.userId ?? "demo-user";
+  const ctx = await withJournalUser(request, body.userId);
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
+
   const transcript = body.transcript?.trim() ?? "";
   const durationSeconds = body.durationSeconds ?? 180;
 
@@ -26,12 +29,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "OPENAI_API_KEY required" }, { status: 503 });
   }
 
-  ensureUser(userId);
-
   try {
     const analysis = await analyzeTranscript(transcript);
 
-    const entryId = saveJournalEntry({
+    const entryId = await saveJournalEntry({
       userId,
       transcript,
       summary: analysis.summary,
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       openThread: analysis.openThread,
     });
 
-    const saved = getEntryById(userId, entryId);
+    const saved = await getEntryById(userId, entryId);
 
     return NextResponse.json({
       saved: true,

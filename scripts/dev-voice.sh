@@ -2,37 +2,14 @@
 # Start ngrok + speech-engine for local voice dev
 set -e
 cd "$(dirname "$0")/.."
-
-speech_engine_healthy() {
-  curl -sf http://127.0.0.1:3002/health >/dev/null 2>&1
-}
-
-ngrok_tunnel_url() {
-  for port in 4040 4041 4042 4043 4044 4045; do
-    url=$(curl -sf "http://127.0.0.1:${port}/api/tunnels" 2>/dev/null | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-except Exception:
-    sys.exit(1)
-for t in data.get('tunnels', []):
-    addr = (t.get('config') or {}).get('addr', '')
-    if '3002' in addr and t.get('public_url'):
-        print(t['public_url'])
-        sys.exit(0)
-sys.exit(1)
-" 2>/dev/null || true)
-    if [[ -n "$url" ]]; then
-      echo "$url"
-      return 0
-    fi
-  done
-  return 1
-}
+# shellcheck source=lib/dev-ports.sh
+source "$(dirname "$0")/lib/dev-ports.sh"
 
 stop_speech_engine() {
-  if lsof -ti :3002 >/dev/null 2>&1; then
-    kill $(lsof -ti :3002) 2>/dev/null || true
+  local pids
+  pids=$(port_pids 3002)
+  if [[ -n "$pids" ]]; then
+    echo "$pids" | xargs kill 2>/dev/null || true
     sleep 1
   fi
 }
@@ -42,34 +19,40 @@ stop_ngrok() {
   sleep 1
 }
 
-if lsof -ti :3002 >/dev/null 2>&1 && speech_engine_healthy; then
-  echo "speech-engine already on :3002 (healthy)"
-else
-  if lsof -ti :3002 >/dev/null 2>&1; then
-    echo "stale process on :3002 — restarting speech-engine"
-  fi
-  stop_speech_engine
-  npm run speech-engine &
-  sleep 2
-  if ! speech_engine_healthy; then
-    echo "✗ speech-engine failed to start on :3002"
-    exit 1
-  fi
-fi
-
-if ngrok_tunnel_url >/dev/null; then
-  echo "ngrok already running for :3002"
+# ngrok must be up BEFORE speech-engine — server syncs wsUrl on startup
+if ngrok_running; then
+  echo "ngrok already running for :3002 ($(ngrok_tunnel_url))"
 else
   if pgrep -f "ngrok http 3002" >/dev/null 2>&1; then
     echo "stale ngrok for :3002 — restarting"
   fi
   stop_ngrok
-  ngrok http 3002 &
+  echo "starting ngrok for :3002…"
+  ngrok http 3002 >/dev/null 2>&1 &
   sleep 3
-  if ! ngrok_tunnel_url >/dev/null; then
+  if ! ngrok_running; then
     echo "✗ ngrok failed to expose :3002"
+    echo "  Install ngrok: https://ngrok.com/download"
+    echo "  Or run manually: ngrok http 3002"
     exit 1
   fi
+  echo "ngrok tunnel: $(ngrok_tunnel_url)"
+fi
+
+if port_in_use 3002 && speech_engine_healthy; then
+  echo "speech-engine already on :3002 (healthy)"
+else
+  if port_in_use 3002; then
+    echo "stale process on :3002 — restarting speech-engine"
+  fi
+  stop_speech_engine
+  echo "starting speech-engine on :3002…"
+  npm run speech-engine &
+  if ! wait_for_http "http://127.0.0.1:3002/health" "speech-engine" 25; then
+    echo "  Check .env has ELEVENLABS_API_KEY, OPENAI_API_KEY, SPEECH_ENGINE_ID"
+    exit 1
+  fi
+  echo "speech-engine ready"
 fi
 
 npm run sync:speech-engine

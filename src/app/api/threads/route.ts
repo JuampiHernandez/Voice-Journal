@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureUser, getRecentEntries, getWorryThreadSnapshot, saveWorryThreadSnapshot } from "@/lib/memory";
-import { generateWorryThreads } from "@/lib/analysis";
+import { getRecentEntries, getWorryThreadSnapshot, saveWorryThreadSnapshot } from "@/lib/memory";
+import { generateMindThreads } from "@/lib/analysis";
 import { getAppConfig } from "@/lib/config";
+import { withJournalUser } from "@/lib/auth/api-context";
 
 export async function GET(request: NextRequest) {
-  const userId = request.nextUrl.searchParams.get("userId") ?? "demo-user";
-  ensureUser(userId);
+  const ctx = await withJournalUser(
+    request,
+    request.nextUrl.searchParams.get("userId")
+  );
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
 
-  const snapshot = getWorryThreadSnapshot(userId);
+  const snapshot = await getWorryThreadSnapshot(userId);
   if (!snapshot) {
     return NextResponse.json({
       threads: [],
       focusRecommendation: null,
+      brightThreads: [],
+      celebrateRecommendation: null,
       generatedAt: null,
     });
   }
@@ -21,15 +28,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as { userId?: string };
-  const userId = body.userId ?? "demo-user";
-  ensureUser(userId);
+  const ctx = await withJournalUser(request, body.userId);
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
 
   const config = getAppConfig();
   if (!config.openaiReady) {
     return NextResponse.json({ error: "OPENAI_API_KEY required" }, { status: 503 });
   }
 
-  const entries = getRecentEntries(userId, 30)
+  const entries = (await getRecentEntries(userId, 30))
     .filter((e) => e.summary && e.summary !== "Processing your check-in…")
     .map((e) => ({
       date: e.entry_date,
@@ -47,12 +55,21 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { threads, focusRecommendation } = await generateWorryThreads(entries);
-    saveWorryThreadSnapshot(userId, threads, focusRecommendation);
+    const { threads, focusRecommendation, brightThreads, celebrateRecommendation } =
+      await generateMindThreads(entries);
+    await saveWorryThreadSnapshot(
+      userId,
+      threads,
+      focusRecommendation,
+      brightThreads,
+      celebrateRecommendation
+    );
 
     return NextResponse.json({
       threads,
       focusRecommendation,
+      brightThreads,
+      celebrateRecommendation,
       generatedAt: new Date().toISOString(),
       entryCount: entries.length,
     });

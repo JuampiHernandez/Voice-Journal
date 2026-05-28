@@ -79,8 +79,12 @@ async function main() {
     console.error("OPENAI_API_KEY required in .env");
     process.exit(1);
   }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("Supabase env vars required in .env");
+    process.exit(1);
+  }
 
-  ensureUser(userId);
+  await ensureUser(userId);
   console.log(`Seeding for user: ${userId}`);
   console.log(replace ? "Mode: replace existing dates\n" : "Mode: skip existing dates (your May 27–29 stay intact)\n");
 
@@ -89,7 +93,7 @@ async function main() {
   let updated = 0;
 
   for (const { date, transcript } of ENTRIES) {
-    const existing = getEntryForDate(userId, date);
+    const existing = await getEntryForDate(userId, date);
 
     if (existing && !replace) {
       console.log(`  ⊘ ${date} skipped — entry already exists`);
@@ -99,7 +103,7 @@ async function main() {
 
     const analysis = await analyzeTranscript(transcript);
 
-    saveJournalEntry({
+    await saveJournalEntry({
       userId,
       entryDate: date,
       entryId: existing?.id,

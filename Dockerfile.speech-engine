@@ -1,0 +1,18 @@
+# Speech Engine WebSocket server for Railway (Next.js stays on Vercel)
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY server ./server
+COPY src ./src
+COPY tsconfig.json ./
+
+ENV NODE_ENV=production
+
+# Railway injects PORT at runtime
+EXPOSE 3002
+
+CMD ["npm", "run", "speech-engine"]

@@ -9,15 +9,19 @@
     "lint": "eslint",
     "speech-engine": "tsx server/speech-engine.ts",
     "setup:speech-engine": "tsx scripts/setup-speech-engine.ts",
+    "setup:production": "tsx scripts/setup-production-speech-engine.ts",
     "sync:speech-engine": "tsx scripts/sync-speech-engine-url.ts",
+    "deploy:railway": "bash scripts/deploy-railway.sh",
     "dev:voice": "bash scripts/dev-voice.sh",
+    "dev:full": "bash scripts/dev-full.sh",
     "prep:demo-video": "bash scripts/prep-demo-video.sh --voice-stack --with-memoir",
     "seed:juampi": "tsx scripts/seed-juampi-journals.ts"
   },
   "dependencies": {
     "@elevenlabs/client": "^1.8.1",
     "@elevenlabs/elevenlabs-js": "^2.49.1",
-    "better-sqlite3": "^12.10.0",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.106.2",
     "date-fns": "^4.2.1",
     "dotenv": "^17.4.2",
     "next": "16.2.6",
@@ -28,8 +32,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@railway/cli": "^4.65.0",
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAppConfig } from "@/lib/config";
+import { registerPendingSessionUser } from "@/lib/session-user";
+import { syncSpeechEngineWsUrl } from "@/lib/speech-engine-sync";
+import { withJournalUser } from "@/lib/auth/api-context";
 
 export async function GET(request: NextRequest) {
   const config = getAppConfig();
@@ -9,23 +12,27 @@ export async function GET(request: NextRequest) {
       {
         error: "Speech Engine not configured",
         missing: config.missing,
-        hint: "Run: npm run speech-engine + ngrok http 3002 + npm run setup:speech-engine",
+        hint: "Deploy speech-engine (Railway/Fly) and set SPEECH_ENGINE_WS_URL, or run locally with ngrok",
       },
       { status: 503 }
     );
   }
 
-  const userId = request.nextUrl.searchParams.get("userId") ?? "demo-user";
-  const { registerPendingSessionUser } = await import("@/lib/session-user");
-  const { syncSpeechEngineWsUrl } = await import("@/lib/speech-engine-sync");
-  registerPendingSessionUser(userId);
+  const ctx = await withJournalUser(
+    request,
+    request.nextUrl.searchParams.get("userId")
+  );
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
+
+  await registerPendingSessionUser(userId);
 
   const sync = await syncSpeechEngineWsUrl();
   if (sync.updated) {
     console.log(`[conversation-token] synced wsUrl → ${sync.expected}`);
   }
   if (!sync.tunnelReachable) {
-    console.warn(`[conversation-token] ngrok tunnel offline: ${sync.tunnelError}`);
+    console.warn(`[conversation-token] speech-engine tunnel offline: ${sync.tunnelError}`);
   }
 
   const participantName = encodeURIComponent(userId);

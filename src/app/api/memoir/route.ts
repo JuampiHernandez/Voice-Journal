@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "node:path";
 import { v4 as uuid } from "uuid";
-import { ensureUser, getYearEntries } from "@/lib/memory";
+import { getYearEntries } from "@/lib/memory";
 import { generateMemoirScript } from "@/lib/analysis";
-import { generateNarration, generateMemoirMusic } from "@/lib/elevenlabs";
-import { getDb } from "@/lib/db";
+import { generateNarrationBuffer, generateMemoirMusicBuffer } from "@/lib/elevenlabs";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { withJournalUser } from "@/lib/auth/api-context";
+import {
+  uploadAudio,
+  memoirNarrationPath,
+  memoirMusicPath,
+  getAudioSignedUrl,
+} from "@/lib/storage";
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as { userId?: string; year?: number };
-  const userId = body.userId ?? "demo-user";
+  const ctx = await withJournalUser(request, body.userId);
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
+
   const year = body.year ?? new Date().getFullYear();
 
-  ensureUser(userId);
-
-  const entries = getYearEntries(userId, year).map((e) => ({
+  const entries = (await getYearEntries(userId, year)).map((e) => ({
     date: e.entry_date,
     summary: e.summary ?? e.transcript.slice(0, 300),
     mood: e.mood,
@@ -32,33 +39,45 @@ export async function POST(request: NextRequest) {
   }
 
   const memoirId = uuid();
-  const outputDir = path.join(process.cwd(), "data", "memoirs", userId, String(year));
+  const narrationStorage = memoirNarrationPath(userId, year);
+  const musicStorage = memoirMusicPath(userId, year);
 
   try {
     const script = await generateMemoirScript(year, entries);
-    const narrationPath = path.join(outputDir, "narration.mp3");
-    const musicPath = path.join(outputDir, "music.mp3");
+    const narrationBuffer = await generateNarrationBuffer(script);
+    const musicBuffer = await generateMemoirMusicBuffer();
+    await uploadAudio(narrationStorage, narrationBuffer);
+    await uploadAudio(musicStorage, musicBuffer);
 
-    await generateNarration(script, narrationPath);
-    await generateMemoirMusic(musicPath);
+    const supabase = createAdminClient();
+    const { data: existing } = await supabase
+      .from("memoirs")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("year", year)
+      .maybeSingle();
 
-    const db = getDb();
-    db.prepare(
-      `INSERT INTO memoirs (id, user_id, year, script, narration_path, music_path, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'ready')
-       ON CONFLICT(user_id, year) DO UPDATE SET
-         script = excluded.script,
-         narration_path = excluded.narration_path,
-         music_path = excluded.music_path,
-         status = 'ready'`
-    ).run(memoirId, userId, year, script, narrationPath, musicPath);
+    const row = {
+      user_id: userId,
+      year,
+      script,
+      narration_path: narrationStorage,
+      music_path: musicStorage,
+      status: "ready",
+    };
+
+    if (existing?.id) {
+      await supabase.from("memoirs").update(row).eq("id", existing.id);
+    } else {
+      await supabase.from("memoirs").insert({ id: memoirId, ...row });
+    }
 
     return NextResponse.json({
       id: memoirId,
       year,
       script,
-      narrationUrl: `/api/memoir/audio?userId=${userId}&year=${year}&type=narration`,
-      musicUrl: `/api/memoir/audio?userId=${userId}&year=${year}&type=music`,
+      narrationUrl: `/api/memoir/audio?year=${year}&type=narration`,
+      musicUrl: `/api/memoir/audio?year=${year}&type=music`,
       entryCount: entries.length,
     });
   } catch (err) {
@@ -70,15 +89,22 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const userId = request.nextUrl.searchParams.get("userId") ?? "demo-user";
+  const ctx = await withJournalUser(
+    request,
+    request.nextUrl.searchParams.get("userId")
+  );
+  if (ctx instanceof NextResponse) return ctx;
+  const { userId } = ctx;
+
   const year = Number(request.nextUrl.searchParams.get("year") ?? new Date().getFullYear());
 
-  const db = getDb();
-  const memoir = db
-    .prepare("SELECT * FROM memoirs WHERE user_id = ? AND year = ? AND status = 'ready'")
-    .get(userId, year) as
-    | { script: string; narration_path: string; music_path: string }
-    | undefined;
+  const { data: memoir } = await createAdminClient()
+    .from("memoirs")
+    .select("script, narration_path, music_path")
+    .eq("user_id", userId)
+    .eq("year", year)
+    .eq("status", "ready")
+    .maybeSingle();
 
   if (!memoir) {
     return NextResponse.json({ exists: false });
@@ -88,7 +114,7 @@ export async function GET(request: NextRequest) {
     exists: true,
     year,
     script: memoir.script,
-    narrationUrl: `/api/memoir/audio?userId=${userId}&year=${year}&type=narration`,
-    musicUrl: `/api/memoir/audio?userId=${userId}&year=${year}&type=music`,
+    narrationUrl: `/api/memoir/audio?year=${year}&type=narration`,
+    musicUrl: `/api/memoir/audio?year=${year}&type=music`,
   });
 }
