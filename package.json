@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "npm run build:showcase-db && next build",
     "start": "next start -p 3001",
     "lint": "eslint",
     "speech-engine": "tsx server/speech-engine.ts",
@@ -15,6 +15,7 @@
     "prep:demo-video": "bash scripts/prep-demo-video.sh --voice-stack --with-memoir",
     "seed:juampi": "tsx scripts/seed-juampi-journals.ts",
     "migrate:supabase": "tsx scripts/migrate-supabase-to-sqlite.ts",
+    "build:showcase-db": "tsx scripts/build-showcase-db.ts",
     "postinstall": "patch-package"
   },
   "dependencies": {

@@ -3,6 +3,9 @@ import {
   ensureUser,
   getRecentEntries,
   getCurrentWeekRange,
+  getWeeklySummary,
+  getWorryThreadSnapshot,
+  getEntryForDate,
   saveJournalEntry,
   saveWeeklySummary,
   saveWorryThreadSnapshot,
@@ -78,9 +81,11 @@ function seedDemoUser() {
   ensureUser(userId, "Demo");
   DEMO_ENTRIES.forEach((entry, index) => {
     const daysAgo = DEMO_ENTRIES.length - 1 - index;
+    const date = entryDate(daysAgo);
+    if (getEntryForDate(userId, date)) return;
     saveJournalEntry({
       userId,
-      entryDate: entryDate(daysAgo),
+      entryDate: date,
       transcript: entry.transcript,
       summary: entry.summary,
       mood: entry.mood,
@@ -147,8 +152,16 @@ function seedDemoUser() {
 }
 
 export function ensureShowcaseSeeded(userId: string) {
-  if (getRecentEntries(userId, 1).length > 0) return;
-  if (userId === "demo-user") seedDemoUser();
+  if (userId !== "demo-user") return;
+
+  const hasEntries = getRecentEntries(userId, 1).length > 0;
+  const hasThreads = getWorryThreadSnapshot(userId) !== null;
+  const { start } = getCurrentWeekRange();
+  const hasWeekly = !!getWeeklySummary(userId, start);
+
+  if (!hasEntries || !hasThreads || !hasWeekly) {
+    seedDemoUser();
+  }
 }
 
 export function ensureAllShowcasesSeeded() {

@@ -1,17 +1,48 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import { addDays, format, parseISO } from "date-fns";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "voice-journal.db");
+const SHOWCASE_DB_NAME = "showcase.db";
+
+function resolveDbLocation() {
+  if (process.env.JOURNAL_DB_PATH) {
+    const dbPath = path.resolve(process.env.JOURNAL_DB_PATH);
+    return { dataDir: path.dirname(dbPath), dbPath, templatePath: null as string | null };
+  }
+
+  if (process.env.VERCEL === "1") {
+    const dataDir = path.join(os.tmpdir(), "voice-journal");
+    return {
+      dataDir,
+      dbPath: path.join(dataDir, "voice-journal.db"),
+      templatePath: path.join(process.cwd(), "data", SHOWCASE_DB_NAME),
+    };
+  }
+
+  const dataDir = path.join(process.cwd(), "data");
+  return {
+    dataDir,
+    dbPath: path.join(dataDir, "voice-journal.db"),
+    templatePath: null as string | null,
+  };
+}
 
 let db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!db) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    db = new Database(DB_PATH);
+    const { dataDir, dbPath, templatePath } = resolveDbLocation();
+    fs.mkdirSync(dataDir, { recursive: true });
+
+    if (!fs.existsSync(dbPath)) {
+      if (templatePath && fs.existsSync(templatePath)) {
+        fs.copyFileSync(templatePath, dbPath);
+      }
+    }
+
+    db = new Database(dbPath);
     db.pragma("journal_mode = WAL");
     initSchema(db);
   }

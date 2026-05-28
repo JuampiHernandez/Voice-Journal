@@ -57,15 +57,28 @@ export function ThreadsView() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch(`/api/threads?userId=${encodeURIComponent(userId)}`, {
-      credentials: "include",
-    });
-    const data = await res.json();
-    setThreads(data.threads ?? []);
-    setBrightThreads(data.brightThreads ?? []);
-    setFocusRecommendation(data.focusRecommendation ?? null);
-    setCelebrateRecommendation(data.celebrateRecommendation ?? null);
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/threads?userId=${encodeURIComponent(userId)}`, {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Could not load threads");
+        setThreads([]);
+        setBrightThreads([]);
+        return;
+      }
+      setThreads(data.threads ?? []);
+      setBrightThreads(data.brightThreads ?? []);
+      setFocusRecommendation(data.focusRecommendation ?? null);
+      setCelebrateRecommendation(data.celebrateRecommendation ?? null);
+    } catch {
+      setError("Could not load threads");
+      setThreads([]);
+      setBrightThreads([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
