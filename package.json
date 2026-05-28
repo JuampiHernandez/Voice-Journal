@@ -15,7 +15,8 @@
     "dev:voice": "bash scripts/dev-voice.sh",
     "dev:full": "bash scripts/dev-full.sh",
     "prep:demo-video": "bash scripts/prep-demo-video.sh --voice-stack --with-memoir",
-    "seed:juampi": "tsx scripts/seed-juampi-journals.ts"
+    "seed:juampi": "tsx scripts/seed-juampi-journals.ts",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@elevenlabs/client": "^1.8.1",
@@ -40,6 +41,7 @@
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "patch-package": "^8.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.22.3",
     "typescript": "^5"

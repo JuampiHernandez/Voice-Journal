@@ -54,6 +54,7 @@ export function VoiceJournalSession() {
   const hadActivityRef = useRef(false);
   const userEndedRef = useRef(false);
   const connectionLostRef = useRef(false);
+  const disconnectHandledRef = useRef(false);
 
   const log = useCallback((msg: string) => {
     console.log(`[VoiceJournal] ${msg}`);
@@ -210,6 +211,8 @@ export function VoiceJournalSession() {
   const finishWithSummary = useCallback((summary: string) => {
     setSaveStatus(summary);
     setError(null);
+    connectionLostRef.current = false;
+    disconnectHandledRef.current = false;
     setConnectionLost(false);
     setStatus("done");
   }, []);
@@ -294,6 +297,7 @@ export function VoiceJournalSession() {
           `Tap Start to try again. If this keeps happening, check Speech Engine on Railway (/health) or your network.`
       );
       connectionLostRef.current = false;
+      disconnectHandledRef.current = false;
       setConnectionLost(false);
       setStatus("error");
       setShowDebug(true);
@@ -303,9 +307,22 @@ export function VoiceJournalSession() {
     [finishWithSummary, log, saveClientCheckIn, tryRecoverTranscript, waitForServerSave]
   );
 
+  const abortEnding = useCallback(() => {
+    isEndingRef.current = false;
+    userEndedRef.current = false;
+    disconnectHandledRef.current = false;
+    connectionLostRef.current = false;
+    setConnectionLost(false);
+    setSaveStatus(null);
+    setStatus("error");
+    setError("Save cancelled. Tap Start to try again.");
+    setShowDebug(true);
+  }, []);
+
   const recoverFromDisconnect = useCallback(
     (reason: string) => {
-      if (isEndingRef.current || userEndedRef.current) return;
+      if (disconnectHandledRef.current || isEndingRef.current || userEndedRef.current) return;
+      disconnectHandledRef.current = true;
 
       const elapsed = Date.now() - sessionStartedAtRef.current;
       log(
@@ -331,6 +348,7 @@ export function VoiceJournalSession() {
         setConnectionLost(false);
         setStatus("error");
         setShowDebug(true);
+        disconnectHandledRef.current = false;
         isEndingRef.current = false;
         return;
       }
@@ -353,6 +371,7 @@ export function VoiceJournalSession() {
     setError(null);
     setSaveStatus(null);
     connectionLostRef.current = false;
+    disconnectHandledRef.current = false;
     setConnectionLost(false);
     setStatus("connecting");
     setSecondsLeft(SESSION_SECONDS);
@@ -405,6 +424,11 @@ export function VoiceJournalSession() {
         onDisconnect: handleUnexpectedDisconnect,
         onError: (message, context) => {
           log(`error: ${message} ${context ? JSON.stringify(context) : ""}`);
+          // Non-fatal server warnings — keep session alive; disconnect handler will finalize
+          if (!isEndingRef.current && !disconnectHandledRef.current) {
+            setSaveStatus(null);
+            return;
+          }
           setError(`Voice error: ${message}. Is Speech Engine deployed (Railway) or running locally?`);
           setStatus("error");
           setShowDebug(true);
@@ -573,7 +597,7 @@ export function VoiceJournalSession() {
             </button>
           </>
         ) : status === "ending" ? (
-          <div className="flex flex-col items-center gap-1.5 text-center">
+          <div className="flex flex-col items-center gap-2 text-center">
             <div className="flex items-center gap-2 text-sm text-stone-500">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
               {connectionLost ? "Connection lost — saving…" : "Saving…"}
@@ -583,6 +607,13 @@ export function VoiceJournalSession() {
                 The voice link dropped. We are pulling your transcript from the server.
               </p>
             )}
+            <button
+              type="button"
+              onClick={abortEnding}
+              className="text-[0.7rem] text-stone-600 underline hover:text-stone-400"
+            >
+              Cancel and retry
+            </button>
           </div>
         ) : (
           <div className="flex items-center gap-2 text-sm text-stone-500">

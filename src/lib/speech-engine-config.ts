@@ -5,8 +5,8 @@ import { ClientEvent, TurnEagerness } from "@elevenlabs/elevenlabs-js/api";
 export const SPEECH_ENGINE_CONVERSATION_CONFIG = {
   turn: {
     turnEagerness: TurnEagerness.Eager,
-    turnTimeout: 5,
-    speculativeTurn: true,
+    turnTimeout: 7,
+    speculativeTurn: false,
   },
   conversation: {
     maxDurationSeconds: 200,
@@ -44,7 +44,12 @@ export async function syncSpeechEngineConversationConfig(): Promise<{
     const currentEagerness = engine.config?.turn?.turnEagerness;
     const hasInterruption = engine.config?.conversation?.clientEvents?.includes("interruption");
 
-    if (currentEagerness === TurnEagerness.Eager && hasInterruption) {
+    const speculative = engine.config?.turn?.speculativeTurn;
+    if (
+      currentEagerness === TurnEagerness.Eager &&
+      hasInterruption &&
+      speculative === false
+    ) {
       return { ok: true, updated: false };
     }
 

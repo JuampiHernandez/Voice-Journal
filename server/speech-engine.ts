@@ -77,6 +77,42 @@ async function resolveUserTranscript(
   return "";
 }
 
+function userTranscriptFromMeta(meta: SessionMeta): string {
+  return meta.transcript
+    .filter((m) => m.role === "user")
+    .map((m) => m.content)
+    .join("\n")
+    .trim();
+}
+
+/** Write partial transcript so the client poll succeeds even if the WS drops mid-session */
+async function checkpointTranscript(
+  meta: SessionMeta,
+  conversationId: string | undefined
+): Promise<void> {
+  const userLines = userTranscriptFromMeta(meta);
+  if (!userLines || !conversationId) return;
+
+  const durationSeconds = Math.round((Date.now() - meta.startedAt) / 1000);
+  const payload = {
+    userId: meta.userId,
+    transcript: userLines,
+    summary: "Processing your check-in…",
+    mood: 5,
+    themes: [] as string[],
+    durationSeconds,
+    conversationId,
+  };
+
+  if (meta.entryId) {
+    await saveJournalEntry({ ...payload, entryId: meta.entryId });
+    return;
+  }
+
+  meta.entryId = await saveJournalEntry(payload);
+  console.log(`[SpeechEngine] checkpoint entry ${meta.entryId} for ${conversationId}`);
+}
+
 async function persistSession(session: SpeechEngineSession, reason: string) {
   const meta = getSessionMeta(session);
   if (!meta || meta.saved) return;
@@ -94,16 +130,28 @@ async function persistSession(session: SpeechEngineSession, reason: string) {
   try {
     const durationSeconds = Math.round((Date.now() - meta.startedAt) / 1000);
 
-    // Save transcript immediately so the UI can confirm while analysis runs
-    meta.entryId = await saveJournalEntry({
-      userId: meta.userId,
-      transcript: userLines,
-      summary: "Processing your check-in…",
-      mood: 5,
-      themes: [],
-      durationSeconds,
-      conversationId: session.conversationId,
-    });
+    if (!meta.entryId) {
+      meta.entryId = await saveJournalEntry({
+        userId: meta.userId,
+        transcript: userLines,
+        summary: "Processing your check-in…",
+        mood: 5,
+        themes: [],
+        durationSeconds,
+        conversationId: session.conversationId,
+      });
+    } else {
+      await saveJournalEntry({
+        userId: meta.userId,
+        entryId: meta.entryId,
+        transcript: userLines,
+        summary: "Processing your check-in…",
+        mood: 5,
+        themes: [],
+        durationSeconds,
+        conversationId: session.conversationId,
+      });
+    }
 
     const analysis = await analyzeTranscript(userLines);
 
@@ -244,8 +292,17 @@ async function main() {
           { signal }
         );
 
-        session.sendResponse(response);
+        await session.sendResponse(response);
+
+        if (meta) {
+          void checkpointTranscript(meta, session.conversationId).catch((e) =>
+            console.error("[SpeechEngine] checkpoint failed:", e)
+          );
+        }
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
+        }
         console.error(
           `[SpeechEngine] onTranscript failed (${session.conversationId}):`,
           err
