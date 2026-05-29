@@ -78,15 +78,3 @@ Browser on localhost ── ElevenLabs client ── ElevenLabs STT/TTS
 | `SPEECH_ENGINE_WS_URL` | Local voice | Written by `npm run setup:speech-engine` from ngrok |
 | `DEFAULT_USER_ID` | Optional | Fallback when no `?user=` (default `demo-user`) |
 | `ELEVENLABS_VOICE_ID` | Optional | Narrator voice for generated audio |
-
-## Demo Video
-
-```bash
-npm run prep:demo-video
-```
-
-See [docs/HACKATHON_DEMO_VIDEO.md](docs/HACKATHON_DEMO_VIDEO.md).
-
-## License
-
-MIT — hackathon submission for ElevenHacks.

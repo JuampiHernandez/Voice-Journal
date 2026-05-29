@@ -11,8 +11,10 @@ export function useJournalUser() {
   const readOnly = isClientReadOnly();
 
   useEffect(() => {
-    setUserId(getUserId());
-    setReady(true);
+    queueMicrotask(() => {
+      setUserId(getUserId());
+      setReady(true);
+    });
   }, []);
 
   return {

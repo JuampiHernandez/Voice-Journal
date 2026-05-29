@@ -14,7 +14,7 @@ export function ShowcaseUserPicker({ compact = false, className = "" }: Showcase
   const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
-    setActiveId(getUserId());
+    queueMicrotask(() => setActiveId(getUserId()));
   }, []);
 
   if (!isClientReadOnly() || !activeId) return null;

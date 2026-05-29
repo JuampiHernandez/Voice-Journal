@@ -8,7 +8,7 @@ export function LocalJournalSection() {
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    setUserId(getUserId());
+    queueMicrotask(() => setUserId(getUserId()));
   }, []);
 
   const short = userId && userId.length > 12 ? `${userId.slice(0, 8)}…` : userId;

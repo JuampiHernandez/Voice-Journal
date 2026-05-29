@@ -11,7 +11,7 @@ export function UserBadge({ compact = false }: { compact?: boolean }) {
   const readOnly = isClientReadOnly();
 
   useEffect(() => {
-    setUserId(getUserId());
+    queueMicrotask(() => setUserId(getUserId()));
   }, []);
 
   if (!userId) return null;

@@ -1,7 +1,7 @@
 {
   "name": "elevenhacks_10_2",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "npm run build:showcase-db && next build",
@@ -13,7 +13,7 @@
     "dev:voice": "bash scripts/dev-voice.sh",
     "dev:full": "bash scripts/dev-full.sh",
     "prep:demo-video": "bash scripts/prep-demo-video.sh --voice-stack --with-memoir",
-    "seed:juampi": "tsx scripts/seed-juampi-journals.ts",
+    "seed:demo-narrative": "tsx scripts/seed-demo-narrative.ts",
     "migrate:supabase": "tsx scripts/migrate-supabase-to-sqlite.ts",
     "build:showcase-db": "tsx scripts/build-showcase-db.ts",
     "postinstall": "patch-package"

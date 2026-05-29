@@ -13,7 +13,7 @@ export function ProductionCheckInNotice() {
   useEffect(() => {
     if (!isClientReadOnly()) return;
     if (sessionStorage.getItem(DISMISS_KEY) === "1") return;
-    setOpen(true);
+    queueMicrotask(() => setOpen(true));
   }, []);
 
   if (!open) return null;

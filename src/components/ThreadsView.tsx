@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useJournalUser } from "@/hooks/useJournalUser";
 import { ReadOnlyBanner, ShowcaseUserPicker } from "./ShowcaseUserPicker";
 import { ThreadMap, formatThreadDateRange } from "./ThreadMap";
@@ -56,7 +56,7 @@ export function ThreadsView() {
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/threads?userId=${encodeURIComponent(userId)}`, {
         credentials: "include",
@@ -79,11 +79,11 @@ export function ThreadsView() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [userId]);
 
   useEffect(() => {
-    if (ready) void load();
-  }, [ready, userId]);
+    if (ready) queueMicrotask(() => void load());
+  }, [ready, load]);
 
   async function generate() {
     setGenerating(true);

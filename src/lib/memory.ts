@@ -234,29 +234,27 @@ export function saveJournalEntry(params: {
       throw new Error(`Journal entry not found: ${entryId}`);
     }
     entryDate = existing.entry_date;
-    const updated = db
-      .prepare(
-        `UPDATE journal_entries SET
-           transcript = ?,
-           summary = ?,
-           mood = ?,
-           themes = ?,
-           open_thread = ?,
-           duration_seconds = ?,
-           conversation_id = COALESCE(?, conversation_id)
-         WHERE id = ? AND user_id = ?`
-      )
-      .run(
-        params.transcript,
-        params.summary,
-        params.mood,
-        themesJson,
-        params.openThread ?? null,
-        params.durationSeconds,
-        params.conversationId ?? null,
-        entryId,
-        params.userId
-      );
+    db.prepare(
+      `UPDATE journal_entries SET
+         transcript = ?,
+         summary = ?,
+         mood = ?,
+         themes = ?,
+         open_thread = ?,
+         duration_seconds = ?,
+         conversation_id = COALESCE(?, conversation_id)
+       WHERE id = ? AND user_id = ?`
+    ).run(
+      params.transcript,
+      params.summary,
+      params.mood,
+      themesJson,
+      params.openThread ?? null,
+      params.durationSeconds,
+      params.conversationId ?? null,
+      entryId,
+      params.userId
+    );
     finalId = entryId;
   } else {
     entryDate = params.entryDate ?? resolveNextEntryDate(params.userId);

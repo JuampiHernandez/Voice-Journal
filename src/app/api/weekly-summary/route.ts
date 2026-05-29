@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       insights: existing.insights ? JSON.parse(existing.insights) : [],
       supportNote: existing.support_note ?? null,
       audioUrl: existing.audio_path
-        ? `/api/weekly-summary/audio?weekStart=${start}`
+        ? `/api/weekly-summary/audio?userId=${encodeURIComponent(userId)}&weekStart=${start}`
         : null,
       cached: true,
     });

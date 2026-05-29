@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useJournalUser } from "@/hooks/useJournalUser";
 import { ReadOnlyBanner, ShowcaseUserPicker, LocalUserBanner } from "./ShowcaseUserPicker";
@@ -47,7 +47,7 @@ export function DashboardView() {
   const [audioProgress, setAudioProgress] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
 
-  async function loadDashboard() {
+  const loadDashboard = useCallback(async () => {
     setLoadError(null);
     const [entriesRes, weeklyRes] = await Promise.all([
       fetch(`/api/entries?userId=${encodeURIComponent(userId)}`, { credentials: "include" }),
@@ -72,11 +72,11 @@ export function DashboardView() {
     }
 
     setLoading(false);
-  }
+  }, [userId]);
 
   useEffect(() => {
-    if (ready) void loadDashboard();
-  }, [ready, userId]);
+    if (ready) queueMicrotask(() => void loadDashboard());
+  }, [ready, loadDashboard]);
 
   useEffect(() => {
     if (!ready) return;
@@ -85,7 +85,7 @@ export function DashboardView() {
     };
     document.addEventListener("visibilitychange", refresh);
     return () => document.removeEventListener("visibilitychange", refresh);
-  }, [ready, userId]);
+  }, [ready, loadDashboard]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -150,8 +150,15 @@ export function DashboardView() {
       audioRef.current.pause();
       setPlayingRecap(false);
     } else {
-      audioRef.current.src = weekly.audioUrl;
-      void audioRef.current.play();
+      const url = new URL(weekly.audioUrl, window.location.origin);
+      if (!url.searchParams.has("userId")) {
+        url.searchParams.set("userId", userId);
+      }
+      audioRef.current.src = url.pathname + url.search;
+      void audioRef.current.play().catch(() => {
+        setPlayingRecap(false);
+        setRecapError("Could not play voice recap. Try generating it again.");
+      });
       setPlayingRecap(true);
     }
   }

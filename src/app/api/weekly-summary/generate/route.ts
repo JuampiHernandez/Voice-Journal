@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       const storagePath = weeklyAudioPath(userId, weekStart);
       uploadAudio(storagePath, buffer);
       saveWeeklyVoice(userId, weekStart, voiceScript, storagePath);
-      audioUrl = `/api/weekly-summary/audio?weekStart=${weekStart}`;
+      audioUrl = `/api/weekly-summary/audio?userId=${encodeURIComponent(userId)}&weekStart=${weekStart}`;
     }
 
     return NextResponse.json({

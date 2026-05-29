@@ -78,7 +78,7 @@ Other useful commands:
 | `npm run dev` | Next.js only (no voice) |
 | `npm run speech-engine` | Speech Engine server only |
 | `npm run sync:speech-engine` | Re-sync ngrok URL to ElevenLabs |
-| `npm run seed:juampi` | Seed demo journal text (needs `OPENAI_API_KEY`) |
+| `npm run seed:demo-narrative` | Seed fictional demo journal text (needs `OPENAI_API_KEY`) |
 | `npm run prep:demo-video` | Demo data + optional voice stack for recording |
 
 Database file (created automatically, not in git): `data/voice-journal.db`
