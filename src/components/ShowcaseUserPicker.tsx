@@ -17,7 +17,7 @@ export function ShowcaseUserPicker({ compact = false, className = "" }: Showcase
     queueMicrotask(() => setActiveId(getUserId()));
   }, []);
 
-  if (!isClientReadOnly() || !activeId) return null;
+  if (!isClientReadOnly() || !activeId || SHOWCASE_USERS.length <= 1) return null;
 
   return (
     <div className={className}>
