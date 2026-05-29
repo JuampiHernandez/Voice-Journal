@@ -14,10 +14,25 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const appUrl =
+  process.env.APP_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3001");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(appUrl),
   title: "Voice Journal — Daily check-ins that become your memoir",
   description:
     "A 3-minute daily voice check-in powered by ElevenLabs Speech Engine. Your memories stay on your server.",
+  openGraph: {
+    title: "Voice Journal",
+    description: "3 minutes today. A lifetime remembered.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Voice Journal",
+    description: "3 minutes today. A lifetime remembered.",
+  },
 };
 
 export default function RootLayout({
