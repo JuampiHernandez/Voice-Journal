@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { Nav } from "@/components/Nav";
 import { LocalJournalRecovery } from "@/components/LocalJournalRecovery";
 import "./globals.css";
@@ -52,6 +53,7 @@ export default function RootLayout({
         <footer className="py-5 text-center text-[0.65rem] text-stone-700">
           Built for #ElevenHacks · Speech Engine + Eleven Music
         </footer>
+        <Analytics />
       </body>
     </html>
   );
